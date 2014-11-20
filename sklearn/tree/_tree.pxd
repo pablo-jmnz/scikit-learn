@@ -109,6 +109,7 @@ cdef class Splitter:
     cdef DOUBLE_t* y
     cdef SIZE_t y_stride
     cdef DOUBLE_t* sample_weight
+    cdef bint* is_categorical            # For each feature: categorical?
 
     # The samples vector `samples` is maintained by the Splitter object such
     # that the samples contained in a node are contiguous. With this setting,
