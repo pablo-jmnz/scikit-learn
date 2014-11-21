@@ -18,6 +18,10 @@ ctypedef np.npy_int32 INT32_t            # Signed 32 bit integer
 ctypedef np.npy_uint32 UINT32_t          # Unsigned 32 bit integer
 ctypedef np.npy_uint64 UINT64_t          # Unsigned 64 bit integer
 
+cdef union SplitValue:
+    DOUBLE_t threshold
+    UINT64_t cat_split
+
 
 # =============================================================================
 # Criterion
@@ -71,8 +75,9 @@ cdef struct SplitRecord:
     SIZE_t pos             # Split samples array at the given position,
                            # i.e. count of samples below threshold for feature.
                            # pos is >= end if the node is a leaf.
-    double threshold       # Threshold to split at, for non-categorical features
-    UINT64_t cat_split     # Split info (like a threshold) for categorical features
+    SplitValue split_value # Threshold to split at, for non-categorical features,
+                           # bitfield for categorical features and BestSplitter,
+                           # or RNG seed and n_categories for RandomSplitter.
     double improvement     # Impurity improvement given parent node.
     double impurity_left   # Impurity of the left split.
     double impurity_right  # Impurity of the right split.
@@ -109,7 +114,7 @@ cdef class Splitter:
     cdef DOUBLE_t* y
     cdef SIZE_t y_stride
     cdef DOUBLE_t* sample_weight
-    cdef bint* is_categorical            # For each feature: categorical?
+    cdef int* n_categories               # (n_features) array of #categories (<0 if not categorical)
 
     # The samples vector `samples` is maintained by the Splitter object such
     # that the samples contained in a node are contiguous. With this setting,
@@ -177,6 +182,7 @@ cdef class Tree:
     cdef Node* nodes                     # Array of nodes
     cdef double* value                   # (capacity, n_outputs, max_n_classes) array of values
     cdef SIZE_t value_stride             # = n_outputs * max_n_classes
+    cdef int* n_categories               # (n_features) array of #categories (<0 if not categorical)
 
     # Methods
     cdef SIZE_t _add_node(self, SIZE_t parent, bint is_left, bint is_leaf,
