@@ -64,16 +64,21 @@ cdef enum:
     RAND_R_MAX = 0x7FFFFFFF
 
 # Repeat struct definition for numpy
+SPLITVALUE_DTYPE = np.dtype({
+    'names': ['threshold', 'cat_split'],
+    'formats': [np.float64, np.uint64],
+    'offsets': [0, 0]
+})
 NODE_DTYPE = np.dtype({
-    'names': ['left_child', 'right_child', 'feature', 'threshold', 'impurity',
-              'n_node_samples', 'weighted_n_node_samples'],
-    'formats': [np.intp, np.intp, np.intp, np.float64, np.float64, np.intp,
-                np.float64],
+    'names': ['left_child', 'right_child', 'feature', 'split_value',
+              'impurity', 'n_node_samples', 'weighted_n_node_samples'],
+    'formats': [np.intp, np.intp, np.intp, SPLITVALUE_DTYPE, np.float64,
+                np.intp, np.float64],
     'offsets': [
         <Py_ssize_t> &(<Node*> NULL).left_child,
         <Py_ssize_t> &(<Node*> NULL).right_child,
         <Py_ssize_t> &(<Node*> NULL).feature,
-        <Py_ssize_t> &(<Node*> NULL).threshold,
+        <Py_ssize_t> &(<Node*> NULL).split_value,
         <Py_ssize_t> &(<Node*> NULL).impurity,
         <Py_ssize_t> &(<Node*> NULL).n_node_samples,
         <Py_ssize_t> &(<Node*> NULL).weighted_n_node_samples
@@ -907,7 +912,7 @@ cdef inline void _init_split(SplitRecord* self, SIZE_t start_pos) nogil:
     self.impurity_right = INFINITY
     self.pos = start_pos
     self.feature = 0
-    self.threshold = 0.
+    self.split_value.threshold = 0.
     self.improvement = -INFINITY
 
 
@@ -1179,10 +1184,10 @@ cdef class BestSplitter(Splitter):
                             if current.improvement > best.improvement:
                                 self.criterion.children_impurity(&current.impurity_left,
                                                                  &current.impurity_right)
-                                current.threshold = (Xf[p - 1] + Xf[p]) / 2.0
+                                current.split_value.threshold = (Xf[p - 1] + Xf[p]) / 2.0
 
-                                if current.threshold == Xf[p]:
-                                    current.threshold = Xf[p - 1]
+                                if current.split_value.threshold == Xf[p]:
+                                    current.split_value.threshold = Xf[p - 1]
 
                                 best = current  # copy
 
@@ -1193,7 +1198,7 @@ cdef class BestSplitter(Splitter):
 
             while p < partition_end:
                 if X[X_sample_stride * samples[p] +
-                     X_fx_stride * best.feature] <= best.threshold:
+                     X_fx_stride * best.feature] <= best.split_value.threshold:
                     p += 1
 
                 else:
@@ -1452,19 +1457,18 @@ cdef class RandomSplitter(Splitter):
                     features[f_i], features[f_j] = features[f_j], features[f_i]
 
                     # Draw a random threshold
-                    current.threshold = rand_uniform(min_feature_value,
-                                                     max_feature_value,
-                                                     random_state)
+                    current.split_value.threshold = rand_uniform(
+                        min_feature_value, max_feature_value, random_state)
 
-                    if current.threshold == max_feature_value:
-                        current.threshold = min_feature_value
+                    if current.split_value.threshold == max_feature_value:
+                        current.split_value.threshold = min_feature_value
 
                     # Partition
                     partition_end = end
                     p = start
                     while p < partition_end:
                         current_feature_value = Xf[p]
-                        if current_feature_value <= current.threshold:
+                        if current_feature_value <= current.split_value.threshold:
                             p += 1
                         else:
                             partition_end -= 1
@@ -1506,7 +1510,7 @@ cdef class RandomSplitter(Splitter):
 
             while p < partition_end:
                 if X[X_sample_stride * samples[p] +
-                     X_fx_stride * best.feature] <= best.threshold:
+                     X_fx_stride * best.feature] <= best.split_value.threshold:
                     p += 1
 
                 else:
@@ -1736,9 +1740,9 @@ cdef class PresortBestSplitter(Splitter):
                                 self.criterion.children_impurity(&current.impurity_left,
                                                                  &current.impurity_right)
 
-                                current.threshold = (Xf[p - 1] + Xf[p]) / 2.0
-                                if current.threshold == Xf[p]:
-                                    current.threshold = Xf[p - 1]
+                                current.split_value.threshold = (Xf[p - 1] + Xf[p]) / 2.0
+                                if current.split_value.threshold == Xf[p]:
+                                    current.split_value.threshold = Xf[p - 1]
 
                                 best = current  # copy
 
@@ -1749,7 +1753,7 @@ cdef class PresortBestSplitter(Splitter):
 
             while p < partition_end:
                 if X[X_sample_stride * samples[p] +
-                     X_fx_stride * best.feature] <= best.threshold:
+                     X_fx_stride * best.feature] <= best.split_value.threshold:
                     p += 1
 
                 else:
@@ -1903,8 +1907,8 @@ cdef class DepthFirstTreeBuilder(TreeBuilder):
                     is_leaf = is_leaf or (split.pos >= end)
 
                 node_id = tree._add_node(parent, is_left, is_leaf, split.feature,
-                                         split.threshold, impurity, n_node_samples,
-                                         weighted_n_node_samples)
+                                         split.split_value.threshold, impurity,
+                                         n_node_samples, weighted_n_node_samples)
 
                 if is_leaf:
                     # Don't store value for internal nodes
@@ -2037,7 +2041,7 @@ cdef class BestFirstTreeBuilder(TreeBuilder):
                     node.left_child = _TREE_LEAF
                     node.right_child = _TREE_LEAF
                     node.feature = _TREE_UNDEFINED
-                    node.threshold = _TREE_UNDEFINED
+                    node.split_value.threshold = _TREE_UNDEFINED
 
                 else:
                     # Node is expandable
@@ -2121,12 +2125,11 @@ cdef class BestFirstTreeBuilder(TreeBuilder):
             splitter.node_split(impurity, &split, &n_constant_features)
             is_leaf = is_leaf or (split.pos >= end)
 
-        node_id = tree._add_node(parent - tree.nodes
-                                 if parent != NULL
+        node_id = tree._add_node(parent - tree.nodes if parent != NULL
                                  else _TREE_UNDEFINED,
-                                 is_left, is_leaf,
-                                 split.feature, split.threshold, impurity, n_node_samples,
-                                 weighted_n_node_samples)
+                                 is_left, is_leaf, split.feature,
+                                 split.split_value.threshold, impurity,
+                                 n_node_samples, weighted_n_node_samples)
         if node_id == <SIZE_t>(-1):
             return -1
 
@@ -2239,7 +2242,7 @@ cdef class Tree:
 
     property threshold:
         def __get__(self):
-            return self._get_node_ndarray()['threshold'][:self.node_count]
+            return self._get_node_ndarray()['split_value']['threshold'][:self.node_count]
 
     property impurity:
         def __get__(self):
@@ -2403,12 +2406,12 @@ cdef class Tree:
             node.left_child = _TREE_LEAF
             node.right_child = _TREE_LEAF
             node.feature = _TREE_UNDEFINED
-            node.threshold = _TREE_UNDEFINED
+            node.split_value.threshold = _TREE_UNDEFINED
 
         else:
             # left_child and right_child will be set later
             node.feature = feature
-            node.threshold = threshold
+            node.split_value.threshold = threshold
 
         self.node_count += 1
 
@@ -2438,7 +2441,7 @@ cdef class Tree:
                 # While node not a leaf
                 while node.left_child != _TREE_LEAF:
                     # ... and node.right_child != _TREE_LEAF:
-                    if X[i, node.feature] <= node.threshold:
+                    if X[i, node.feature] <= node.split_value.threshold:
                         node = &self.nodes[node.left_child]
                     else:
                         node = &self.nodes[node.right_child]
