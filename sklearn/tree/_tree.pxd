@@ -114,7 +114,7 @@ cdef class Splitter:
     cdef DOUBLE_t* y
     cdef SIZE_t y_stride
     cdef DOUBLE_t* sample_weight
-    cdef int* n_categories               # (n_features) array of #categories (<0 if not categorical)
+    cdef INT32_t* n_categories           # (n_features) array of #categories (<0 if not categorical)
 
     # The samples vector `samples` is maintained by the Splitter object such
     # that the samples contained in a node are contiguous. With this setting,
@@ -184,7 +184,7 @@ cdef class Tree:
     cdef Node* nodes                     # Array of nodes
     cdef double* value                   # (capacity, n_outputs, max_n_classes) array of values
     cdef SIZE_t value_stride             # = n_outputs * max_n_classes
-    cdef int* n_categories               # (n_features) array of #categories (<0 if not categorical)
+    cdef INT32_t* n_categories           # (n_features) array of #categories (<0 if not categorical)
 
     # Methods
     cdef SIZE_t _add_node(self, SIZE_t parent, bint is_left, bint is_leaf,

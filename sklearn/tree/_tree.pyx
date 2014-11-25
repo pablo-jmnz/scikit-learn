@@ -2290,6 +2290,7 @@ cdef class Tree:
         self.capacity = 0
         self.value = NULL
         self.nodes = NULL
+
         self.n_categories = NULL
         safe_realloc(&self.n_categories, n_features)
         for k in range(n_features):
@@ -2339,7 +2340,7 @@ cdef class Tree:
                 not value_ndarray.flags.c_contiguous or
                 value_ndarray.dtype != np.float64 or
                 ncat_ndarray.shape != (self.n_features,) or
-                ncat_ndarray.dtype != np.int or
+                ncat_ndarray.dtype != np.int32 or
                 not ncat_ndarray.flags.c_contiguous):
             raise ValueError('Did not recognise loaded array layout')
 
@@ -2351,7 +2352,7 @@ cdef class Tree:
         value = memcpy(self.value, (<np.ndarray> value_ndarray).data,
                        self.capacity * self.value_stride * sizeof(double))
         ncat = memcpy(self.n_categories, (<np.ndarray> ncat_ndarray).data,
-                      self.n_features * sizeof(int))
+                      self.n_features * sizeof(INT32_t))
 
     cdef void _resize(self, SIZE_t capacity) except *:
         """Resize all inner arrays to `capacity`, if `capacity` == -1, then
@@ -2550,7 +2551,7 @@ cdef class Tree:
         cdef np.npy_intp shape[1]
         shape[0] = <np.npy_intp> self.n_features
         cdef np.ndarray arr
-        arr = np.PyArray_SimpleNewFromData(1, shape, np.NPY_INT, self.n_categories)
+        arr = np.PyArray_SimpleNewFromData(1, shape, np.NPY_INT32, self.n_categories)
         Py_INCREF(self)
         arr.base = <PyObject*> self
         return arr
@@ -2570,7 +2571,7 @@ ctypedef fused realloc_ptr:
     (DTYPE_t*)
     (SIZE_t*)
     (unsigned char*)
-    (int*)
+    (INT32_t*)
 
 cdef realloc_ptr safe_realloc(realloc_ptr* p, size_t nelems) except *:
     # sizeof(realloc_ptr[0]) would be more like idiomatic C, but causes Cython
