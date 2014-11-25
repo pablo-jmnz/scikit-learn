@@ -147,6 +147,9 @@ cdef class Splitter:
 
     cdef double node_impurity(self) nogil
 
+    cdef void _set_sample_mask(self, SIZE_t start, SIZE_t end) nogil
+    cdef void _reset_sample_mask(self, SIZE_t start, SIZE_t end) nogil
+
 
 # =============================================================================
 # Tree

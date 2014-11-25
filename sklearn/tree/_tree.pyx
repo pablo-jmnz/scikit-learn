@@ -1040,6 +1040,14 @@ cdef class Splitter:
         """Copy the impurity of node samples[start:end."""
         return self.criterion.node_impurity()
 
+    cdef void _set_sample_mask(self, SIZE_t start, SIZE_t end) nogil:
+        """Set the sample mask to avoid processing samples not on this node."""
+        pass
+
+    cdef void _reset_sample_mask(self, SIZE_t start, SIZE_t end) nogil:
+        """Reset the sample mask to all zeros."""
+        pass
+
 
 cdef class BestSplitter(Splitter):
     """Splitter for finding the best split."""
@@ -1088,6 +1096,9 @@ cdef class BestSplitter(Splitter):
         cdef SIZE_t partition_end
 
         _init_split(&best, end)
+
+        # Set the sample mask, if necessary
+        self._set_sample_mask(start, end)
 
         # Sample up to max_features without replacement using a
         # Fisher-Yates-based algorithm (using the local variables `f_i` and
@@ -1215,6 +1226,9 @@ cdef class BestSplitter(Splitter):
                     tmp = samples[partition_end]
                     samples[partition_end] = samples[p]
                     samples[p] = tmp
+
+        # Reset the sample mask, if necessary
+        self._reset_sample_mask(start, end)
 
         # Respect invariant for constant features: the original order of
         # element in features[:n_known_constants] must be preserved for sibling
@@ -1391,6 +1405,9 @@ cdef class RandomSplitter(Splitter):
 
         _init_split(&best, end)
 
+        # Set the sample mask, if necessary
+        self._set_sample_mask(start, end)
+
         # Sample up to max_features without replacement using a
         # Fisher-Yates-based algorithm (using the local variables `f_i` and
         # `f_j` to compute a permutation of the `features` array).
@@ -1528,6 +1545,9 @@ cdef class RandomSplitter(Splitter):
                     samples[partition_end] = samples[p]
                     samples[p] = tmp
 
+        # Reset the sample mask, if necessary
+        self._reset_sample_mask(start, end)
+
         # Respect invariant for constant features: the original order of
         # element in features[:n_known_constants] must be preserved for sibling
         # and child nodes
@@ -1596,6 +1616,20 @@ cdef class PresortBestSplitter(Splitter):
             sample_mask = safe_realloc(&self.sample_mask, self.n_total_samples)
             memset(sample_mask, 0, self.n_total_samples)
 
+    cdef void _set_sample_mask(self, SIZE_t start, SIZE_t end) nogil:
+        cdef SIZE_t* samples = self.samples
+        cdef unsigned char* sample_mask = self.sample_mask
+        cdef SIZE_t p
+        for p in range(start, end):
+            sample_mask[samples[p]] = 1
+
+    cdef void _reset_sample_mask(self, SIZE_t start, SIZE_t end) nogil:
+        cdef SIZE_t* samples = self.samples
+        cdef unsigned char* sample_mask = self.sample_mask
+        cdef SIZE_t p
+        for p in range(start, end):
+            sample_mask[samples[p]] = 0
+
     cdef void node_split(self, double impurity, SplitRecord* split,
                          SIZE_t* n_constant_features) nogil:
         """Find the best split on node samples[start:end]."""
@@ -1640,9 +1674,8 @@ cdef class PresortBestSplitter(Splitter):
 
         _init_split(&best, end)
 
-        # Set sample mask
-        for p in range(start, end):
-            sample_mask[samples[p]] = 1
+        # Set the sample mask, if necessary
+        self._set_sample_mask(start, end)
 
         # Sample up to max_features without replacement using a
         # Fisher-Yates-based algorithm (using the local variables `f_i` and
@@ -1771,9 +1804,8 @@ cdef class PresortBestSplitter(Splitter):
                     samples[partition_end] = samples[p]
                     samples[p] = tmp
 
-        # Reset sample mask
-        for p in range(start, end):
-            sample_mask[samples[p]] = 0
+        # Reset the sample mask, if necessary
+        self._reset_sample_mask(start, end)
 
         # Respect invariant for constant features: the original order of
         # element in features[:n_known_constants] must be preserved for sibling
