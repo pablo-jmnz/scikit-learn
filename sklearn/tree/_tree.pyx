@@ -1041,13 +1041,23 @@ cdef class Splitter:
         return self.criterion.node_impurity()
 
     cdef void _set_sample_mask(self, SIZE_t start, SIZE_t end) nogil:
-        """Set the sample mask to avoid processing samples not on this node."""
+        """Set the sample mask to avoid using samples not on this node."""
         pass
 
     cdef void _reset_sample_mask(self, SIZE_t start, SIZE_t end) nogil:
         """Reset the sample mask to all zeros."""
         pass
 
+    cdef void _feature_minmax(self, SIZE_t feature, DTYPE_t* minvalue,
+                              DTYPE_t* maxvalue) nogil:
+        """Find the minimum and maximum feature values for this node.
+
+        The minimum and maximum values found for the feature are
+        returned in the `minvalue` and `maxvalue` locations,
+        respectively. A side effect is that the relevant data are
+        copied from `self.X` into `self.feature_values`. Depending on
+        the subclass, `self.feature_values` may be sorted."""
+        pass
 
 cdef class BestSplitter(Splitter):
     """Splitter for finding the best split."""
@@ -1057,6 +1067,30 @@ cdef class BestSplitter(Splitter):
                                self.min_samples_leaf,
                                self.min_weight_leaf,
                                self.random_state), self.__getstate__())
+
+    cdef void _feature_minmax(self, SIZE_t feature, DTYPE_t* minvalue,
+                              DTYPE_t* maxvalue) nogil:
+        cdef DTYPE_t* X = self.X
+        cdef DTYPE_t* Xf = self.feature_values
+        cdef SIZE_t* samples = self.samples
+        cdef SIZE_t X_sample_stride = self.X_sample_stride
+        cdef SIZE_t X_fx_stride = self.X_fx_stride
+        cdef SIZE_t start = self.start
+        cdef SIZE_t end = self.end
+        cdef SIZE_t p
+
+        # Sort samples along that feature; first copy the feature
+        # values for the active samples into Xf, s.t.
+        # Xf[i] == X[samples[i], j], so the sort uses the cache more
+        # effectively.
+        for p in range(start, end):
+            Xf[p] = X[X_sample_stride * samples[p] +
+                      X_fx_stride * feature]
+
+        sort(Xf + start, samples + start, end - start)
+
+        minvalue[0] = Xf[start]
+        maxvalue[0] = Xf[end - 1]
 
     cdef void node_split(self, double impurity, SplitRecord* split,
                          SIZE_t* n_constant_features) nogil:
@@ -1364,6 +1398,32 @@ cdef class RandomSplitter(Splitter):
                                  self.min_weight_leaf,
                                  self.random_state), self.__getstate__())
 
+    cdef void _feature_minmax(self, SIZE_t feature, DTYPE_t* minvalue,
+                              DTYPE_t* maxvalue) nogil:
+        cdef DTYPE_t* X = self.X
+        cdef DTYPE_t* Xf = self.feature_values
+        cdef SIZE_t* samples = self.samples
+        cdef SIZE_t X_sample_stride = self.X_sample_stride
+        cdef SIZE_t X_fx_stride = self.X_fx_stride
+        cdef SIZE_t start = self.start
+        cdef SIZE_t end = self.end
+        cdef SIZE_t p
+
+        # Find min, max
+        minvalue[0] = X[X_sample_stride * samples[start] +
+                      X_fx_stride * feature]
+        maxvalue[0] = minvalue[0]
+        Xf[start] = minvalue[0]
+
+        for p in range(start + 1, end):
+            Xf[p] = X[X_sample_stride * samples[p] +
+                      X_fx_stride * feature]
+
+            if Xf[p] < minvalue[0]:
+                minvalue[0] = Xf[p]
+            elif Xf[p] > maxvalue[0]:
+                maxvalue[0] = Xf[p]
+
     cdef void node_split(self, double impurity, SplitRecord* split,
                          SIZE_t* n_constant_features) nogil:
         """Find the best random split on node samples[start:end]."""
@@ -1629,6 +1689,35 @@ cdef class PresortBestSplitter(Splitter):
         cdef SIZE_t p
         for p in range(start, end):
             sample_mask[samples[p]] = 0
+
+    cdef void _feature_minmax(self, SIZE_t feature, DTYPE_t *minvalue,
+                              DTYPE_t *maxvalue) nogil:
+        cdef DTYPE_t* X = self.X
+        cdef DTYPE_t* Xf = self.feature_values
+        cdef SIZE_t* samples = self.samples
+        cdef SIZE_t X_sample_stride = self.X_sample_stride
+        cdef SIZE_t X_fx_stride = self.X_fx_stride
+        cdef SIZE_t start = self.start
+        cdef SIZE_t end = self.end
+        cdef INT32_t* X_argsorted = self.X_argsorted_ptr
+        cdef SIZE_t X_argsorted_stride = self.X_argsorted_stride
+        cdef SIZE_t n_total_samples = self.n_total_samples
+        cdef unsigned char* sample_mask = self.sample_mask
+        cdef SIZE_t p, i, j
+
+        # Extract ordering from X_argsorted
+        p = start
+
+        for i in range(n_total_samples):
+            j = X_argsorted[X_argsorted_stride * feature + i]
+            if sample_mask[j] == 1:
+                samples[p] = j
+                Xf[p] = X[X_sample_stride * j +
+                          X_fx_stride * feature]
+                p += 1
+
+        minvalue[0] = Xf[start]
+        maxvalue[0] = Xf[end - 1]
 
     cdef void node_split(self, double impurity, SplitRecord* split,
                          SIZE_t* n_constant_features) nogil:

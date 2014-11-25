@@ -147,8 +147,11 @@ cdef class Splitter:
 
     cdef double node_impurity(self) nogil
 
+    # Internal methods used by node_split
     cdef void _set_sample_mask(self, SIZE_t start, SIZE_t end) nogil
     cdef void _reset_sample_mask(self, SIZE_t start, SIZE_t end) nogil
+    cdef void _feature_minmax(self, SIZE_t feature, DTYPE_t* min_value,
+                              DTYPE_t* max_value) nogil
 
 
 # =============================================================================
