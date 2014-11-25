@@ -196,6 +196,7 @@ cdef class Tree:
 
     cdef np.ndarray _get_value_ndarray(self)
     cdef np.ndarray _get_node_ndarray(self)
+    cdef np.ndarray _get_ncat_ndarray(self)
 
     cpdef np.ndarray predict(self, np.ndarray[DTYPE_t, ndim=2] X)
     cpdef np.ndarray apply(self, np.ndarray[DTYPE_t, ndim=2] X)
