@@ -1899,7 +1899,6 @@ cdef class DepthFirstTreeBuilder(TreeBuilder):
         cdef SplitRecord split
         cdef SIZE_t node_id
 
-        cdef double threshold
         cdef double impurity = INFINITY
         cdef SIZE_t n_constant_features
         cdef bint is_leaf
@@ -1947,7 +1946,7 @@ cdef class DepthFirstTreeBuilder(TreeBuilder):
                     is_leaf = is_leaf or (split.pos >= end)
 
                 node_id = tree._add_node(parent, is_left, is_leaf, split.feature,
-                                         split.split_value.threshold, impurity,
+                                         split.split_value, impurity,
                                          n_node_samples, weighted_n_node_samples)
 
                 if is_leaf:
@@ -2168,7 +2167,7 @@ cdef class BestFirstTreeBuilder(TreeBuilder):
         node_id = tree._add_node(parent - tree.nodes if parent != NULL
                                  else _TREE_UNDEFINED,
                                  is_left, is_leaf, split.feature,
-                                 split.split_value.threshold, impurity,
+                                 split.split_value, impurity,
                                  n_node_samples, weighted_n_node_samples)
         if node_id == <SIZE_t>(-1):
             return -1
@@ -2430,7 +2429,7 @@ cdef class Tree:
         return 0
 
     cdef SIZE_t _add_node(self, SIZE_t parent, bint is_left, bint is_leaf,
-                          SIZE_t feature, double threshold, double impurity,
+                          SIZE_t feature, SplitValue split_value, double impurity,
                           SIZE_t n_node_samples, double weighted_n_node_samples) nogil:
         """Add a node to the tree.
 
@@ -2464,7 +2463,7 @@ cdef class Tree:
         else:
             # left_child and right_child will be set later
             node.feature = feature
-            node.split_value.threshold = threshold
+            node.split_value = split_value
 
         self.node_count += 1
 
@@ -2483,6 +2482,10 @@ cdef class Tree:
         cdef SIZE_t n_samples = X.shape[0]
         cdef Node* node = NULL
         cdef SIZE_t i = 0
+        cdef SIZE_t j = 0
+        cdef SplitValue* split_value
+        cdef UINT32_t rng_state = 0
+        cdef bint goes_left = 0
 
         cdef np.ndarray[SIZE_t] out = np.zeros((n_samples,), dtype=np.intp)
         cdef SIZE_t* out_data = <SIZE_t*> out.data
@@ -2494,7 +2497,29 @@ cdef class Tree:
                 # While node not a leaf
                 while node.left_child != _TREE_LEAF:
                     # ... and node.right_child != _TREE_LEAF:
-                    if X[i, node.feature] <= node.split_value.threshold:
+                    split_value = &node.split_value
+                    if self.n_categories[node.feature] < 1:
+                        # Non-categorical feature
+                        # Simple threshold comparison
+                        goes_left = (
+                            X[i, node.feature] <= split_value.threshold)
+                    elif ((split_value.cat_split >> 63) & 1):
+                        # Categorical feature, bitfield model
+                        goes_left = (X[i, node.feature] < 64 and
+                                     (split_value.cat_split >>
+                                      <SIZE_t>X[i, node.feature]) & 1 == 1)
+                    else:
+                        # Categorical feature; "random" model
+                        # (allows for lots of categories;
+                        # used for RandomSplitter/ExtraTrees only)
+                        goes_left = 0
+                        rng_state = split_value.cat_split & <UINT64_t>0xFFFFFFFF
+                        for j in range(split_value.cat_split >> 32):
+                            goes_left = (goes_left or
+                                X[i, node.feature] ==
+                                rand_int(0, self.n_categories[node.feature],
+                                         &rng_state))
+                    if goes_left:
                         node = &self.nodes[node.left_child]
                     else:
                         node = &self.nodes[node.right_child]
