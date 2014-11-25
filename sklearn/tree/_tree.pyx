@@ -935,6 +935,7 @@ cdef class Splitter:
         self.y = NULL
         self.y_stride = 0
         self.sample_weight = NULL
+        self.n_categories = NULL
 
         self.max_features = max_features
         self.min_samples_leaf = min_samples_leaf
@@ -947,6 +948,7 @@ cdef class Splitter:
         free(self.features)
         free(self.constant_features)
         free(self.feature_values)
+        free(self.n_categories)
 
     def __getstate__(self):
         return {}
@@ -1002,6 +1004,12 @@ cdef class Splitter:
         self.y = <DOUBLE_t*> y.data
         self.y_stride = <SIZE_t> y.strides[0] / <SIZE_t> y.itemsize
         self.sample_weight = sample_weight
+
+        # Initialize the number of categories of each feature
+        # A value of -1 indicates an ordered (non-categorical) feature
+        safe_realloc(&self.n_categories, n_features)
+        for i in range(n_features):
+            self.n_categories[i] = -1
 
     cdef void node_reset(self, SIZE_t start, SIZE_t end,
                          double* weighted_n_node_samples) nogil:
