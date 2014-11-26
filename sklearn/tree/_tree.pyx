@@ -1059,6 +1059,16 @@ cdef class Splitter:
         the subclass, `self.feature_values` may be sorted."""
         pass
 
+    cdef bint _choose_split(self, SplitRecord* best, SplitRecord* current,
+                            double impurity, DTYPE_t min_value,
+                            DTYPE_t max_value) nogil:
+        """Generate a "best" split, returned in the `best` parameter.
+
+        Depending on the subclass, it is picked at random or by
+        exhaustively testing for the best split. Returns `True` on
+        success or `False` if the split was rejected."""
+        pass
+
 cdef class BestSplitter(Splitter):
     """Splitter for finding the best split."""
     def __reduce__(self):

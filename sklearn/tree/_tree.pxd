@@ -152,6 +152,9 @@ cdef class Splitter:
     cdef void _reset_sample_mask(self, SIZE_t start, SIZE_t end) nogil
     cdef void _feature_minmax(self, SIZE_t feature, DTYPE_t* min_value,
                               DTYPE_t* max_value) nogil
+    cdef bint _choose_split(self, SplitRecord* best, SplitRecord* current,
+                            double impurity, DTYPE_t min_value,
+                            DTYPE_t max_value) nogil
 
 
 # =============================================================================
