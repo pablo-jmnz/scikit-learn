@@ -1119,6 +1119,8 @@ cdef class BestSplitter(Splitter):
         cdef SIZE_t f_i = n_features
         cdef SIZE_t f_j, p, tmp
         cdef SIZE_t n_visited_features = 0
+        cdef DTYPE_t min_feature_value
+        cdef DTYPE_t max_feature_value
         # Number of features discovered to be constant during the split search
         cdef SIZE_t n_found_constants = 0
         # Number of features known to be constant and drawn without replacement
@@ -1181,17 +1183,11 @@ cdef class BestSplitter(Splitter):
 
                 current.feature = features[f_j]
 
-                # Sort samples along that feature; first copy the feature
-                # values for the active samples into Xf, s.t.
-                # Xf[i] == X[samples[i], j], so the sort uses the cache more
-                # effectively.
-                for p in range(start, end):
-                    Xf[p] = X[X_sample_stride * samples[p] +
-                              X_fx_stride * current.feature]
+                # Determine min and max feature values
+                self._feature_minmax(current.feature, &min_feature_value,
+                                     &max_feature_value)
 
-                sort(Xf + start, samples + start, end - start)
-
-                if Xf[end - 1] <= Xf[start] + FEATURE_THRESHOLD:
+                if max_feature_value <= min_feature_value + FEATURE_THRESHOLD:
                     features[f_j] = features[n_total_constants]
                     features[n_total_constants] = current.feature
 
@@ -1514,21 +1510,9 @@ cdef class RandomSplitter(Splitter):
 
                 current.feature = features[f_j]
 
-                # Find min, max
-                min_feature_value = X[X_sample_stride * samples[start] +
-                                      X_fx_stride * current.feature]
-                max_feature_value = min_feature_value
-                Xf[start] = min_feature_value
-
-                for p in range(start + 1, end):
-                    current_feature_value = X[X_sample_stride * samples[p] +
-                                              X_fx_stride * current.feature]
-                    Xf[p] = current_feature_value
-
-                    if current_feature_value < min_feature_value:
-                        min_feature_value = current_feature_value
-                    elif current_feature_value > max_feature_value:
-                        max_feature_value = current_feature_value
+                # Determine min and max feature values
+                self._feature_minmax(current.feature, &min_feature_value,
+                                     &max_feature_value)
 
                 if max_feature_value <= min_feature_value + FEATURE_THRESHOLD:
                     features[f_j] = features[n_total_constants]
@@ -1758,6 +1742,8 @@ cdef class PresortBestSplitter(Splitter):
         # n_total_constants = n_known_constants + n_found_constants
         cdef SIZE_t n_total_constants = n_known_constants
         cdef SIZE_t n_visited_features = 0
+        cdef DTYPE_t min_feature_value
+        cdef DTYPE_t max_feature_value
         cdef SIZE_t partition_end
         cdef SIZE_t i, j
 
@@ -1812,19 +1798,11 @@ cdef class PresortBestSplitter(Splitter):
 
                 current.feature = features[f_j]
 
-                # Extract ordering from X_argsorted
-                p = start
+                # Determine min and max feature values
+                self._feature_minmax(current.feature, &min_feature_value,
+                                     &max_feature_value)
 
-                for i in range(n_total_samples):
-                    j = X_argsorted[X_argsorted_stride * current.feature + i]
-                    if sample_mask[j] == 1:
-                        samples[p] = j
-                        Xf[p] = X[X_sample_stride * j +
-                                  X_fx_stride * current.feature]
-                        p += 1
-
-                # Evaluate all splits
-                if Xf[end - 1] <= Xf[start] + FEATURE_THRESHOLD:
+                if max_feature_value <= min_feature_value + FEATURE_THRESHOLD:
                     features[f_j] = features[n_total_constants]
                     features[n_total_constants] = current.feature
 
