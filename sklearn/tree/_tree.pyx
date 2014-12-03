@@ -2580,22 +2580,24 @@ cdef class Tree:
                         # Simple threshold comparison
                         goes_left = (
                             X[i, node.feature] <= split_value.threshold)
-                    elif ((split_value.cat_split >> 63) & 1):
+                    elif (split_value.cat_split & 1):
                         # Categorical feature, bitfield model
                         goes_left = (X[i, node.feature] < 64 and
                                      (split_value.cat_split >>
-                                      <SIZE_t>X[i, node.feature]) & 1 == 1)
+                                      <SIZE_t>X[i, node.feature]) & 1 == 0)
                     else:
                         # Categorical feature; "random" model
                         # (allows for lots of categories;
                         # used for RandomSplitter/ExtraTrees only)
-                        goes_left = 0
-                        rng_state = split_value.cat_split & <UINT64_t>0xFFFFFFFF
-                        for j in range(split_value.cat_split >> 32):
-                            goes_left = (goes_left or
+                        rng_state = split_value.cat_split >> 32
+                        for j in range((split_value.cat_split &
+                                        <SIZE_t>0xFFFFFFFF) >> 1):
+                            goes_left = (
                                 X[i, node.feature] ==
                                 rand_int(0, self.n_categories[node.feature],
                                          &rng_state))
+                            if goes_left:
+                                break
                     if goes_left:
                         node = &self.nodes[node.left_child]
                     else:
