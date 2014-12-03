@@ -1294,47 +1294,12 @@ cdef class BestSplitter(Splitter):
                     f_i -= 1
                     features[f_i], features[f_j] = features[f_j], features[f_i]
 
-                    # Evaluate all splits
-                    self.criterion.reset()
-                    p = start
-
-                    while p < end:
-                        while (p + 1 < end and
-                               Xf[p + 1] <= Xf[p] + FEATURE_THRESHOLD):
-                            p += 1
-
-                        # (p + 1 >= end) or (X[samples[p + 1], current.feature] >
-                        #                    X[samples[p], current.feature])
-                        p += 1
-                        # (p >= end) or (X[samples[p], current.feature] >
-                        #                X[samples[p - 1], current.feature])
-
-                        if p < end:
-                            current.pos = p
-
-                            # Reject if min_samples_leaf is not guaranteed
-                            if (((current.pos - start) < min_samples_leaf) or
-                                    ((end - current.pos) < min_samples_leaf)):
-                                continue
-
-                            self.criterion.update(current.pos)
-
-                            # Reject if min_weight_leaf is not satisfied
-                            if ((self.criterion.weighted_n_left < min_weight_leaf) or
-                                    (self.criterion.weighted_n_right < min_weight_leaf)):
-                                continue
-
-                            current.improvement = self.criterion.impurity_improvement(impurity)
-
-                            if current.improvement > best.improvement:
-                                self.criterion.children_impurity(&current.impurity_left,
-                                                                 &current.impurity_right)
-                                current.split_value.threshold = (Xf[p - 1] + Xf[p]) / 2.0
-
-                                if current.split_value.threshold == Xf[p]:
-                                    current.split_value.threshold = Xf[p - 1]
-
-                                best = current  # copy
+                    # Choose a split and go to next feature if  min_samples
+                    # or min_weight requirements are not satisfied
+                    if not self._choose_split(&best, &current, impurity,
+                                              min_feature_value,
+                                              max_feature_value):
+                        continue
 
         # Reorganize into samples[start:best.pos] + samples[best.pos:end]
         if best.pos < end:
@@ -1702,52 +1667,12 @@ cdef class RandomSplitter(Splitter):
                     f_i -= 1
                     features[f_i], features[f_j] = features[f_j], features[f_i]
 
-                    # Draw a random threshold
-                    current.split_value.threshold = rand_uniform(
-                        min_feature_value, max_feature_value, random_state)
-
-                    if current.split_value.threshold == max_feature_value:
-                        current.split_value.threshold = min_feature_value
-
-                    # Partition
-                    partition_end = end
-                    p = start
-                    while p < partition_end:
-                        current_feature_value = Xf[p]
-                        if current_feature_value <= current.split_value.threshold:
-                            p += 1
-                        else:
-                            partition_end -= 1
-
-                            Xf[p] = Xf[partition_end]
-                            Xf[partition_end] = current_feature_value
-
-                            tmp = samples[partition_end]
-                            samples[partition_end] = samples[p]
-                            samples[p] = tmp
-
-                    current.pos = partition_end
-
-                    # Reject if min_samples_leaf is not guaranteed
-                    if (((current.pos - start) < min_samples_leaf) or
-                            ((end - current.pos) < min_samples_leaf)):
+                    # Choose a split and go to next feature if  min_samples
+                    # or min_weight requirements are not satisfied
+                    if not self._choose_split(&best, &current, impurity,
+                                              min_feature_value,
+                                              max_feature_value):
                         continue
-
-                    # Evaluate split
-                    self.criterion.reset()
-                    self.criterion.update(current.pos)
-
-                    # Reject if min_weight_leaf is not satisfied
-                    if ((self.criterion.weighted_n_left < min_weight_leaf) or
-                            (self.criterion.weighted_n_right < min_weight_leaf)):
-                        continue
-
-                    current.improvement = self.criterion.impurity_improvement(impurity)
-
-                    if current.improvement > best.improvement:
-                        self.criterion.children_impurity(&current.impurity_left,
-                                                         &current.impurity_right)
-                        best = current  # copy
 
         # Reorganize into samples[start:best.pos] + samples[best.pos:end]
         if best.pos < end and current.feature != best.feature:
@@ -1990,46 +1915,12 @@ cdef class PresortBestSplitter(Splitter):
                     f_i -= 1
                     features[f_i], features[f_j] = features[f_j], features[f_i]
 
-                    self.criterion.reset()
-                    p = start
-
-                    while p < end:
-                        while (p + 1 < end and
-                               Xf[p + 1] <= Xf[p] + FEATURE_THRESHOLD):
-                            p += 1
-
-                        # (p + 1 >= end) or (X[samples[p + 1], current.feature] >
-                        #                    X[samples[p], current.feature])
-                        p += 1
-                        # (p >= end) or (X[samples[p], current.feature] >
-                        #                X[samples[p - 1], current.feature])
-
-                        if p < end:
-                            current.pos = p
-
-                            # Reject if min_samples_leaf is not guaranteed
-                            if (((current.pos - start) < min_samples_leaf) or
-                                    ((end - current.pos) < min_samples_leaf)):
-                                continue
-
-                            self.criterion.update(current.pos)
-
-                            # Reject if min_weight_leaf is not satisfied
-                            if ((self.criterion.weighted_n_left < min_weight_leaf) or
-                                    (self.criterion.weighted_n_right < min_weight_leaf)):
-                                continue
-
-                            current.improvement = self.criterion.impurity_improvement(impurity)
-
-                            if current.improvement > best.improvement:
-                                self.criterion.children_impurity(&current.impurity_left,
-                                                                 &current.impurity_right)
-
-                                current.split_value.threshold = (Xf[p - 1] + Xf[p]) / 2.0
-                                if current.split_value.threshold == Xf[p]:
-                                    current.split_value.threshold = Xf[p - 1]
-
-                                best = current  # copy
+                    # Choose a split and go to next feature if  min_samples
+                    # or min_weight requirements are not satisfied
+                    if not self._choose_split(&best, &current, impurity,
+                                              min_feature_value,
+                                              max_feature_value):
+                        continue
 
         # Reorganize into samples[start:best.pos] + samples[best.pos:end]
         if best.pos < end:
