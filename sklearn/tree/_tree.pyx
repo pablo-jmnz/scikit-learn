@@ -1516,6 +1516,87 @@ cdef class RandomSplitter(Splitter):
             elif Xf[p] > maxvalue[0]:
                 maxvalue[0] = Xf[p]
 
+    cdef bint _choose_split(self, SplitRecord* best, SplitRecord* current,
+                            double impurity, DTYPE_t min_value,
+                            DTYPE_t max_value) nogil:
+        cdef bint is_categorical
+        cdef INT32_t* n_categories = self.n_categories
+        cdef SIZE_t split_n_draw
+        cdef UINT32_t split_seed
+        cdef UINT32_t* random_state = &self.rand_r_state
+        cdef SIZE_t p, q
+        cdef SIZE_t partition_end
+        cdef SIZE_t* samples = self.samples
+        cdef SIZE_t start = self.start
+        cdef SIZE_t end = self.end
+        cdef DTYPE_t* Xf = self.feature_values
+        cdef bint goes_left
+        cdef SIZE_t min_samples_leaf = self.min_samples_leaf
+        cdef double min_weight_leaf = self.min_weight_leaf
+
+        is_categorical = n_categories[current.feature] >= 1
+        # Construct a random split
+        if is_categorical:
+            # split_n_draw is the number of categories to send left
+            # TODO: This "should" be a binomial draw
+            split_n_draw = rand_int(1, n_categories[current.feature],
+                                    random_state)
+            split_seed = our_rand_r(random_state)
+            current.split_value.cat_split = 1
+            current.split_value.cat_split |= split_n_draw << 1
+            current.split_value.cat_split |= split_seed << 32
+        else:
+            current.split_value.threshold = rand_uniform(
+                min_value, max_value, random_state)
+            if current.split_value.threshold == max_value:
+                current.split_value.threshold = min_value
+
+        # Partition
+        partition_end = end
+        p = start
+        while p < partition_end:
+            if is_categorical:
+                for q in range(split_n_draw):
+                    goes_left = (
+                        Xf[p] == rand_int(0, n_categories[current.feature],
+                                          &split_seed))
+                    if goes_left:
+                        break
+            else:
+                goes_left = Xf[p] <= current.split_value.threshold
+            if goes_left:
+                p += 1
+            else:
+                partition_end -= 1
+                Xf[p], Xf[partition_end] = Xf[partition_end], Xf[p]
+                samples[p], samples[partition_end] = (
+                    samples[partition_end], samples[p])
+
+        current.pos = partition_end
+
+        # Reject if min_samples_leaf is not guaranteed
+        if (((current.pos - start) < min_samples_leaf) or
+                ((end - current.pos) < min_samples_leaf)):
+            return 0  # Go to next feature
+
+        # Evaluate split
+        self.criterion.reset()
+        self.criterion.update(current.pos)
+
+        # Reject if min_weight_leaf is not satisfied
+        if ((self.criterion.weighted_n_left < min_weight_leaf) or
+                (self.criterion.weighted_n_right < min_weight_leaf)):
+            return 0  # Go to next feature
+
+        current.improvement = self.criterion.impurity_improvement(impurity)
+
+        if current.improvement > best.improvement:
+            self.criterion.children_impurity(&current.impurity_left,
+                                             &current.impurity_right)
+            best[0] = current[0]  # copy
+
+        return 1  # Keep this feature
+
     cdef void node_split(self, double impurity, SplitRecord* split,
                          SIZE_t* n_constant_features) nogil:
         """Find the best random split on node samples[start:end]."""
