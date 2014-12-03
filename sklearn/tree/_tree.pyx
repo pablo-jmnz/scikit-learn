@@ -1064,10 +1064,96 @@ cdef class Splitter:
                             DTYPE_t max_value) nogil:
         """Generate a "best" split, returned in the `best` parameter.
 
-        Depending on the subclass, it is picked at random or by
-        exhaustively testing for the best split. Returns `True` on
-        success or `False` if the split was rejected."""
-        pass
+        The split is generated as is appropriate for the BestSplitter
+        and PresortBestSplitter subclasses, by exhaustively testing
+        for the best split. The RandomSplitter subclass reimplements
+        this function.
+
+        Returns `True` on success or `False` if the split was rejected
+        and another feature needs to be chosen."""
+        cdef bint is_categorical
+        cdef INT32_t* n_categories = self.n_categories
+        cdef SIZE_t p, q
+        cdef SIZE_t partition_end
+        cdef SIZE_t* samples = self.samples
+        cdef SIZE_t start = self.start
+        cdef SIZE_t end = self.end
+        cdef DTYPE_t* Xf = self.feature_values
+        cdef SIZE_t min_samples_leaf = self.min_samples_leaf
+        cdef double min_weight_leaf = self.min_weight_leaf
+
+        is_categorical = n_categories[current.feature] >= 1
+        # Evaluate all splits
+        self.criterion.reset()
+
+        p = 0 if is_categorical else start
+
+        while True:
+            if is_categorical:
+                # WARNING: This will be VERY slow if there are more than
+                # just a few categories. Like O(n_samp * 2**n_cat) slow.
+                # TODO: Use n_categories in current sample, not full sample
+                if p >= (1 << n_categories[current.feature]) - 1:
+                    break
+                else:
+                    p += 2  # LSB must always be 0
+
+                # Partition
+                partition_end = end
+                q = start
+                while q < partition_end:
+                    if ((p >> <SIZE_t>Xf[q]) & 1):
+                        q += 1
+                    else:
+                        partition_end -= 1
+                        Xf[q], Xf[partition_end] = Xf[partition_end], Xf[q]
+                        samples[q], samples[partition_end] = (
+                            samples[partition_end], samples[q])
+                current.pos = partition_end
+            else:
+                # Non-categorical feature
+                while (p + 1 < end and
+                       Xf[p + 1] <= Xf[p] + FEATURE_THRESHOLD):
+                    p += 1
+
+                # (p + 1 >= end) or (X[samples[p + 1], current.feature] >
+                #                    X[samples[p], current.feature])
+                p += 1
+                # (p >= end) or (X[samples[p], current.feature] >
+                #                X[samples[p - 1], current.feature])
+
+                if p >= end:
+                    break
+                else:
+                    current.pos = p
+
+            # Reject if min_samples_leaf is not guaranteed
+            if (((current.pos - start) < min_samples_leaf) or
+                    ((end - current.pos) < min_samples_leaf)):
+                continue
+
+            self.criterion.update(current.pos)
+
+            # Reject if min_weight_leaf is not satisfied
+            if ((self.criterion.weighted_n_left < min_weight_leaf) or
+                    (self.criterion.weighted_n_right < min_weight_leaf)):
+                continue
+
+            current.improvement = self.criterion.impurity_improvement(impurity)
+
+            if current.improvement > best.improvement:
+                self.criterion.children_impurity(&current.impurity_left,
+                                                 &current.impurity_right)
+                if (is_categorical):
+                    current.split_value.cat_split = p
+                else:
+                    current.split_value.threshold = (Xf[p - 1] + Xf[p]) / 2.0
+                    if current.split_value.threshold == Xf[p]:
+                        current.split_value.threshold = Xf[p - 1]
+
+                best[0] = current[0]  # copy
+
+        return 1  # Keep this feature
 
 cdef class BestSplitter(Splitter):
     """Splitter for finding the best split."""
