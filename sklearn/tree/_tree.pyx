@@ -1190,8 +1190,10 @@ cdef class BestSplitter(Splitter):
 
     cdef void node_split(self, double impurity, SplitRecord* split,
                          SIZE_t* n_constant_features) nogil:
-        """Find the best split on node samples[start:end]."""
-        # Find the best split
+        """Find a split on node samples[start:end].
+
+        Depending on the subclass, it may be the best split or a
+        random split. """
         cdef SIZE_t* samples = self.samples
         cdef SIZE_t start = self.start
         cdef SIZE_t end = self.end
@@ -1213,10 +1215,7 @@ cdef class BestSplitter(Splitter):
         cdef SplitRecord best, current
 
         cdef SIZE_t f_i = n_features
-        cdef SIZE_t f_j, p, tmp
-        cdef SIZE_t n_visited_features = 0
-        cdef DTYPE_t min_feature_value
-        cdef DTYPE_t max_feature_value
+        cdef SIZE_t f_j, p
         # Number of features discovered to be constant during the split search
         cdef SIZE_t n_found_constants = 0
         # Number of features known to be constant and drawn without replacement
@@ -1224,7 +1223,9 @@ cdef class BestSplitter(Splitter):
         cdef SIZE_t n_known_constants = n_constant_features[0]
         # n_total_constants = n_known_constants + n_found_constants
         cdef SIZE_t n_total_constants = n_known_constants
-        cdef DTYPE_t current_feature_value
+        cdef SIZE_t n_visited_features = 0
+        cdef DTYPE_t min_feature_value
+        cdef DTYPE_t max_feature_value
         cdef SIZE_t partition_end
 
         _init_split(&best, end)
@@ -1265,17 +1266,16 @@ cdef class BestSplitter(Splitter):
                            random_state)
 
             if f_j < n_known_constants:
-                # f_j in the interval [n_drawn_constants, n_known_constants[
-                tmp = features[f_j]
-                features[f_j] = features[n_drawn_constants]
-                features[n_drawn_constants] = tmp
+                # f_j is in [n_drawn_constants, n_known_constants[
+                features[f_j], features[n_drawn_constants] = (
+                    features[n_drawn_constants], features[f_j])
 
                 n_drawn_constants += 1
 
             else:
-                # f_j in the interval [n_known_constants, f_i - n_found_constants[
+                # f_j is in [n_known_constants, f_i - n_found_constants[
                 f_j += n_found_constants
-                # f_j in the interval [n_total_constants, f_i[
+                # f_j is in [n_total_constants, f_i[
 
                 current.feature = features[f_j]
 
@@ -1314,9 +1314,8 @@ cdef class BestSplitter(Splitter):
                 else:
                     partition_end -= 1
 
-                    tmp = samples[partition_end]
-                    samples[partition_end] = samples[p]
-                    samples[p] = tmp
+                    samples[p], samples[partition_end] = (
+                        samples[partition_end], samples[p])
 
         # Reset the sample mask, if necessary
         self._reset_sample_mask(start, end)
@@ -1564,8 +1563,10 @@ cdef class RandomSplitter(Splitter):
 
     cdef void node_split(self, double impurity, SplitRecord* split,
                          SIZE_t* n_constant_features) nogil:
-        """Find the best random split on node samples[start:end]."""
-        # Draw random splits and pick the best
+        """Find a split on node samples[start:end].
+
+        Depending on the subclass, it may be the best split or a
+        random split. """
         cdef SIZE_t* samples = self.samples
         cdef SIZE_t start = self.start
         cdef SIZE_t end = self.end
@@ -1587,7 +1588,7 @@ cdef class RandomSplitter(Splitter):
         cdef SplitRecord best, current
 
         cdef SIZE_t f_i = n_features
-        cdef SIZE_t f_j, p, tmp
+        cdef SIZE_t f_j, p
         # Number of features discovered to be constant during the split search
         cdef SIZE_t n_found_constants = 0
         # Number of features known to be constant and drawn without replacement
@@ -1598,7 +1599,6 @@ cdef class RandomSplitter(Splitter):
         cdef SIZE_t n_visited_features = 0
         cdef DTYPE_t min_feature_value
         cdef DTYPE_t max_feature_value
-        cdef DTYPE_t current_feature_value
         cdef SIZE_t partition_end
 
         _init_split(&best, end)
@@ -1620,6 +1620,7 @@ cdef class RandomSplitter(Splitter):
                 (n_visited_features < max_features or
                  # At least one drawn features must be non constant
                  n_visited_features <= n_found_constants + n_drawn_constants)):
+
             n_visited_features += 1
 
             # Loop invariant: elements of features in
@@ -1638,17 +1639,16 @@ cdef class RandomSplitter(Splitter):
                            random_state)
 
             if f_j < n_known_constants:
-                # f_j in the interval [n_drawn_constants, n_known_constants[
-                tmp = features[f_j]
-                features[f_j] = features[n_drawn_constants]
-                features[n_drawn_constants] = tmp
+                # f_j is in [n_drawn_constants, n_known_constants[
+                features[f_j], features[n_drawn_constants] = (
+                    features[n_drawn_constants], features[f_j])
 
                 n_drawn_constants += 1
 
             else:
-                # f_j in the interval [n_known_constants, f_i - n_found_constants[
+                # f_j is in [n_known_constants, f_i - n_found_constants[
                 f_j += n_found_constants
-                # f_j in the interval [n_total_constants, f_i[
+                # f_j is in [n_total_constants, f_i[
 
                 current.feature = features[f_j]
 
@@ -1687,9 +1687,8 @@ cdef class RandomSplitter(Splitter):
                 else:
                     partition_end -= 1
 
-                    tmp = samples[partition_end]
-                    samples[partition_end] = samples[p]
-                    samples[p] = tmp
+                    samples[p], samples[partition_end] = (
+                        samples[partition_end], samples[p])
 
         # Reset the sample mask, if necessary
         self._reset_sample_mask(start, end)
@@ -1807,8 +1806,10 @@ cdef class PresortBestSplitter(Splitter):
 
     cdef void node_split(self, double impurity, SplitRecord* split,
                          SIZE_t* n_constant_features) nogil:
-        """Find the best split on node samples[start:end]."""
-        # Find the best split
+        """Find a split on node samples[start:end].
+
+        Depending on the subclass, it may be the best split or a
+        random split. """
         cdef SIZE_t* samples = self.samples
         cdef SIZE_t start = self.start
         cdef SIZE_t end = self.end
@@ -1821,11 +1822,6 @@ cdef class PresortBestSplitter(Splitter):
         cdef DTYPE_t* Xf = self.feature_values
         cdef SIZE_t X_sample_stride = self.X_sample_stride
         cdef SIZE_t X_fx_stride = self.X_fx_stride
-        cdef INT32_t* X_argsorted = self.X_argsorted_ptr
-        cdef SIZE_t X_argsorted_stride = self.X_argsorted_stride
-        cdef SIZE_t n_total_samples = self.n_total_samples
-        cdef unsigned char* sample_mask = self.sample_mask
-
         cdef SIZE_t max_features = self.max_features
         cdef SIZE_t min_samples_leaf = self.min_samples_leaf
         cdef double min_weight_leaf = self.min_weight_leaf
@@ -1847,7 +1843,6 @@ cdef class PresortBestSplitter(Splitter):
         cdef DTYPE_t min_feature_value
         cdef DTYPE_t max_feature_value
         cdef SIZE_t partition_end
-        cdef SIZE_t i, j
 
         _init_split(&best, end)
 
@@ -1868,6 +1863,7 @@ cdef class PresortBestSplitter(Splitter):
                 (n_visited_features < max_features or
                  # At least one drawn features must be non constant
                  n_visited_features <= n_found_constants + n_drawn_constants)):
+
             n_visited_features += 1
 
             # Loop invariant: elements of features in
@@ -1887,16 +1883,15 @@ cdef class PresortBestSplitter(Splitter):
 
             if f_j < n_known_constants:
                 # f_j is in [n_drawn_constants, n_known_constants[
-                tmp = features[f_j]
-                features[f_j] = features[n_drawn_constants]
-                features[n_drawn_constants] = tmp
+                features[f_j], features[n_drawn_constants] = (
+                    features[n_drawn_constants], features[f_j])
 
                 n_drawn_constants += 1
 
             else:
-                # f_j in the interval [n_known_constants, f_i - n_found_constants[
+                # f_j is in [n_known_constants, f_i - n_found_constants[
                 f_j += n_found_constants
-                # f_j in the interval [n_total_constants, f_i[
+                # f_j is in [n_total_constants, f_i[
 
                 current.feature = features[f_j]
 
@@ -1935,9 +1930,8 @@ cdef class PresortBestSplitter(Splitter):
                 else:
                     partition_end -= 1
 
-                    tmp = samples[partition_end]
-                    samples[partition_end] = samples[p]
-                    samples[p] = tmp
+                    samples[p], samples[partition_end] = (
+                        samples[partition_end], samples[p])
 
         # Reset the sample mask, if necessary
         self._reset_sample_mask(start, end)
