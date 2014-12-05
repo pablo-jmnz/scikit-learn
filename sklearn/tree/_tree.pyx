@@ -1231,37 +1231,35 @@ cdef class Splitter:
                 # f_j is in [n_drawn_constants, n_known_constants[
                 features[f_j], features[n_drawn_constants] = (
                     features[n_drawn_constants], features[f_j])
-
                 n_drawn_constants += 1
+                continue
 
-            else:
-                # f_j is in [n_known_constants, f_i - n_found_constants[
-                f_j += n_found_constants
-                # f_j is in [n_total_constants, f_i[
+            # f_j is in [n_known_constants, f_i - n_found_constants[
+            f_j += n_found_constants
+            # f_j is in [n_total_constants, f_i[
 
-                current.feature = features[f_j]
+            current.feature = features[f_j]
 
-                # Determine min and max feature values
-                self._feature_minmax(current.feature, &min_feature_value,
-                                     &max_feature_value)
+            # Determine min and max feature values
+            self._feature_minmax(current.feature, &min_feature_value,
+                                 &max_feature_value)
 
-                if max_feature_value <= min_feature_value + FEATURE_THRESHOLD:
-                    features[f_j] = features[n_total_constants]
-                    features[n_total_constants] = current.feature
+            if max_feature_value <= min_feature_value + FEATURE_THRESHOLD:
+                # Found a new constant feature
+                features[f_j] = features[n_total_constants]
+                features[n_total_constants] = current.feature
+                n_found_constants += 1
+                n_total_constants += 1
+                continue
 
-                    n_found_constants += 1
-                    n_total_constants += 1
+            f_i -= 1
+            features[f_i], features[f_j] = features[f_j], features[f_i]
 
-                else:
-                    f_i -= 1
-                    features[f_i], features[f_j] = features[f_j], features[f_i]
-
-                    # Choose a split and go to next feature if  min_samples
-                    # or min_weight requirements are not satisfied
-                    if not self._choose_split(&best, &current, impurity,
-                                              min_feature_value,
-                                              max_feature_value):
-                        continue
+            # Choose a split and go to next feature if  min_samples
+            # or min_weight requirements are not satisfied
+            if not self._choose_split(&best, &current, impurity,
+                                      min_feature_value, max_feature_value):
+                continue
 
         # Reorganize into samples[start:best.pos] + samples[best.pos:end]
         if best.pos < end:
