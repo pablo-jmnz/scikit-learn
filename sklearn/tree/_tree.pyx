@@ -1097,7 +1097,8 @@ cdef class Splitter:
                 partition_end = end
                 q = start
                 while q < partition_end:
-                    if ((p >> <SIZE_t>Xf[q]) & 1):
+                    if goes_left(Xf[q], (<SplitValue*>(&p))[0],
+                                 n_categories[current.feature]):
                         q += 1
                     else:
                         partition_end -= 1
@@ -1163,6 +1164,7 @@ cdef class Splitter:
         cdef SIZE_t* features = self.features
         cdef SIZE_t* constant_features = self.constant_features
         cdef SIZE_t n_features = self.n_features
+        cdef INT32_t* n_categories = self.n_categories
 
         cdef DTYPE_t* X = self.X
         cdef DTYPE_t* Xf = self.feature_values
@@ -1267,8 +1269,9 @@ cdef class Splitter:
             p = start
 
             while p < partition_end:
-                if X[X_sample_stride * samples[p] +
-                     X_fx_stride * best.feature] <= best.split_value.threshold:
+                if goes_left(X[X_sample_stride * samples[p] +
+                               X_fx_stride * best.feature], best.split_value,
+                             n_categories[best.feature]):
                     p += 1
 
                 else:
@@ -1488,7 +1491,6 @@ cdef class RandomSplitter(Splitter):
         cdef SIZE_t start = self.start
         cdef SIZE_t end = self.end
         cdef DTYPE_t* Xf = self.feature_values
-        cdef bint goes_left
         cdef SIZE_t min_samples_leaf = self.min_samples_leaf
         cdef double min_weight_leaf = self.min_weight_leaf
 
@@ -1513,16 +1515,8 @@ cdef class RandomSplitter(Splitter):
         partition_end = end
         p = start
         while p < partition_end:
-            if is_categorical:
-                for q in range(split_n_draw):
-                    goes_left = (
-                        Xf[p] == rand_int(0, n_categories[current.feature],
-                                          &split_seed))
-                    if goes_left:
-                        break
-            else:
-                goes_left = Xf[p] <= current.split_value.threshold
-            if goes_left:
+            if goes_left(Xf[p], current.split_value,
+                         n_categories[current.feature]):
                 p += 1
             else:
                 partition_end -= 1
@@ -2313,10 +2307,6 @@ cdef class Tree:
         cdef SIZE_t n_samples = X.shape[0]
         cdef Node* node = NULL
         cdef SIZE_t i = 0
-        cdef SIZE_t j = 0
-        cdef SplitValue* split_value
-        cdef UINT32_t rng_state = 0
-        cdef bint goes_left = 0
 
         cdef np.ndarray[SIZE_t] out = np.zeros((n_samples,), dtype=np.intp)
         cdef SIZE_t* out_data = <SIZE_t*> out.data
@@ -2328,31 +2318,8 @@ cdef class Tree:
                 # While node not a leaf
                 while node.left_child != _TREE_LEAF:
                     # ... and node.right_child != _TREE_LEAF:
-                    split_value = &node.split_value
-                    if self.n_categories[node.feature] < 1:
-                        # Non-categorical feature
-                        # Simple threshold comparison
-                        goes_left = (
-                            X[i, node.feature] <= split_value.threshold)
-                    elif (split_value.cat_split & 1):
-                        # Categorical feature, bitfield model
-                        goes_left = (X[i, node.feature] < 64 and
-                                     (split_value.cat_split >>
-                                      <SIZE_t>X[i, node.feature]) & 1 == 0)
-                    else:
-                        # Categorical feature; "random" model
-                        # (allows for lots of categories;
-                        # used for RandomSplitter/ExtraTrees only)
-                        rng_state = split_value.cat_split >> 32
-                        for j in range((split_value.cat_split &
-                                        <SIZE_t>0xFFFFFFFF) >> 1):
-                            goes_left = (
-                                X[i, node.feature] ==
-                                rand_int(0, self.n_categories[node.feature],
-                                         &rng_state))
-                            if goes_left:
-                                break
-                    if goes_left:
+                    if goes_left(X[i, node.feature], node.split_value,
+                                 self.n_categories[node.feature]):
                         node = &self.nodes[node.left_child]
                     else:
                         node = &self.nodes[node.right_child]
@@ -2517,3 +2484,23 @@ cdef inline double rand_uniform(double low, double high,
 
 cdef inline double log(double x) nogil:
     return ln(x) / ln(2.0)
+
+cdef bint goes_left(DTYPE_t feature_value, SplitValue split,
+                    SIZE_t n_categories) nogil:
+    """Determine whether a sample goes to the left or right child node."""
+    cdef UINT32_t rng_seed
+
+    if n_categories < 1:
+        # Non-categorical feature
+        return feature_value <= split.threshold
+    elif (split.cat_split & 1 == 0):
+        # Bitfield model
+        return (split.cat_split >> <SIZE_t>feature_value) & 1
+    else:
+        # Random model
+        rng_seed = split.cat_split >> 32
+        for q in range((split.cat_split & <SIZE_t>0xFFFFFFFF) >> 1):
+            if (<SIZE_t>feature_value ==
+                    rand_int(0, n_categories, &rng_seed)):
+                return 1
+        return 0
