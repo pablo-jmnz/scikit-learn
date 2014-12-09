@@ -240,6 +240,37 @@ class BaseDecisionTree(six.with_metaclass(ABCMeta, BaseEstimator,
                                  "number of samples=%d" %
                                  (len(sample_weight), n_samples))
 
+        if isinstance(categorical, str):
+            if categorical == 'None':
+                categorical = np.array([])
+            elif categorical == 'All':
+                categorical = np.arange(self.n_features_)
+            else:
+                raise ValueError('Invalid value for categorical. Allowed'
+                                 ' string values are "All" or "None"')
+        categorical = np.atleast_1d(categorical).flatten()
+        if categorical.dtype == np.bool:
+            if categorical.size != self.n_features_:
+                raise ValueError("Shape of boolean parameter categorical must"
+                                 " be [n_features]")
+            categorical = np.nonzero(categorical)[0]
+        if (categorical.size > self.n_features_ or
+            np.min(categorical) < 0 or
+            np.max(categorical) >= self.n_features_):
+            raise ValueError("Invalid shape or invalid feature index for"
+                             " parameter categorical")
+
+        # Determine the number of categories in each categorical feature
+        n_categories = np.zeros(self.n_features_, dtype=np.int32) - 1
+        for iFeature in categorical:
+            Xf = set(np.round(X[:, iFeature]).astype(np.int32))
+            if Xf != set(range(len(Xf))):
+                raise ValueError("Values of categorical feature at index %d"
+                                 " must span the range [0, %d)." %
+                                 (iFeature, len(Xf)))
+            else:
+                n_categories[iFeature] = len(Xf)
+
         # Set min_weight_leaf from min_weight_fraction_leaf
         if self.min_weight_fraction_leaf != 0. and sample_weight is not None:
             min_weight_leaf = (self.min_weight_fraction_leaf *
@@ -267,8 +298,10 @@ class BaseDecisionTree(six.with_metaclass(ABCMeta, BaseEstimator,
                                                 self.min_samples_leaf,
                                                 min_weight_leaf,
                                                 random_state)
+        splitter.n_categories = n_categories
 
         self.tree_ = Tree(self.n_features_, self.n_classes_, self.n_outputs_)
+        self.tree_.n_categories = n_categories
 
         # Use BestFirst if max_leaf_nodes given; use DepthFirst otherwise
         if max_leaf_nodes < 0:
