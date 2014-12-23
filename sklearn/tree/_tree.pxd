@@ -233,3 +233,9 @@ cdef class TreeBuilder:
 
     cpdef build(self, Tree tree, np.ndarray X, np.ndarray y,
                 np.ndarray sample_weight=*)
+
+# =============================================================================
+# Module-level function for traversing a tree
+# =============================================================================
+cdef bint goes_left(DTYPE_t feature_value, SplitValue split,
+                    SIZE_t n_categories) nogil
