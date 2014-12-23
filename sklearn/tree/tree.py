@@ -255,8 +255,9 @@ class BaseDecisionTree(six.with_metaclass(ABCMeta, BaseEstimator,
                                  " be [n_features]")
             categorical = np.nonzero(categorical)[0]
         if (categorical.size > self.n_features_ or
-            np.min(categorical) < 0 or
-            np.max(categorical) >= self.n_features_):
+            (categorical.size > 0 and
+             (np.min(categorical) < 0 or
+              np.max(categorical) >= self.n_features_))):
             raise ValueError("Invalid shape or invalid feature index for"
                              " parameter categorical")
 
