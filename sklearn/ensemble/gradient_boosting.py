@@ -725,7 +725,7 @@ class BaseGradientBoosting(six.with_metaclass(ABCMeta, BaseEnsemble,
         self.estimators_ = np.empty((0, 0), dtype=np.object)
 
     def _fit_stage(self, i, X, y, y_pred, sample_weight, sample_mask,
-                   criterion, splitter, random_state):
+                   categorical, criterion, splitter, random_state):
         """Fit another stage of ``n_classes_`` trees to the boosting model. """
 
         assert sample_mask.dtype == np.bool
@@ -756,7 +756,7 @@ class BaseGradientBoosting(six.with_metaclass(ABCMeta, BaseEnsemble,
                 sample_weight = sample_weight * sample_mask.astype(np.float64)
 
             tree.fit(X, residual, sample_weight=sample_weight,
-                     check_input=False)
+                     categorical=categorical, check_input=False)
 
             # update tree leaves
             loss.update_terminal_regions(tree.tree_, X, y, residual, y_pred,
@@ -902,7 +902,7 @@ class BaseGradientBoosting(six.with_metaclass(ABCMeta, BaseEnsemble,
     def _is_initialized(self):
         return len(getattr(self, 'estimators_', [])) > 0
 
-    def fit(self, X, y, sample_weight=None, monitor=None):
+    def fit(self, X, y, sample_weight=None, categorical='None', monitor=None):
         """Fit the gradient boosting model.
 
         Parameters
@@ -923,6 +923,19 @@ class BaseGradientBoosting(six.with_metaclass(ABCMeta, BaseEnsemble,
             ignored while searching for a split in each node. In the case of
             classification, splits are also ignored if they would result in any
             single class carrying a negative weight in either child node.
+
+        categorical : array of indices, or boolean mask, shape = \
+                      [n_features], or ``'All'`` or ``'None'``
+            Indicates which features should be considered as
+            categorical rather than ordinal. For decision trees, the
+            maximum number of categories is 64, though the real-world
+            limit will be much lower because evaluating splits has
+            :math:`\mathcal{O}(2^N)` time complexity, for :math:`N`
+            categories. Extra-randomized trees do not have this
+            limitation because they do not try to find the best
+            split. The maximum number of categories for these is
+            :math:`2^{31}`. The feature values must be integers in the
+            range :math:`[0, N)`.
 
         monitor : callable, optional
             The monitor is called after each iteration with the current
@@ -985,8 +998,8 @@ class BaseGradientBoosting(six.with_metaclass(ABCMeta, BaseEnsemble,
             self._resize_state()
 
         # fit the boosting stages
-        n_stages = self._fit_stages(X, y, y_pred, sample_weight, random_state,
-                                    begin_at_stage, monitor)
+        n_stages = self._fit_stages(X, y, y_pred, sample_weight, categorical,
+                                    random_state, begin_at_stage, monitor)
         # change shape of arrays after fit (early-stopping or additional ests)
         if n_stages != self.estimators_.shape[0]:
             self.estimators_ = self.estimators_[:n_stages]
@@ -998,8 +1011,8 @@ class BaseGradientBoosting(six.with_metaclass(ABCMeta, BaseEnsemble,
 
         return self
 
-    def _fit_stages(self, X, y, y_pred, sample_weight, random_state,
-                    begin_at_stage=0, monitor=None):
+    def _fit_stages(self, X, y, y_pred, sample_weight, categorical,
+                    random_state, begin_at_stage=0, monitor=None):
         """Iteratively fits the stages.
 
         For each stage it computes the progress (OOB, train score)
@@ -1040,8 +1053,8 @@ class BaseGradientBoosting(six.with_metaclass(ABCMeta, BaseEnsemble,
 
             # fit next stage of trees
             y_pred = self._fit_stage(i, X, y, y_pred, sample_weight,
-                                     sample_mask, criterion, splitter,
-                                     random_state)
+                                     sample_mask, categorical,
+                                     criterion, splitter, random_state)
 
             # track deviance (= loss)
             if do_oob:
@@ -1322,7 +1335,7 @@ class GradientBoostingClassifier(BaseGradientBoosting, ClassifierMixin):
             random_state, verbose=verbose, max_leaf_nodes=max_leaf_nodes,
             warm_start=warm_start)
 
-    def fit(self, X, y, sample_weight=None, monitor=None):
+    def fit(self, X, y, sample_weight=None, categorical='None', monitor=None):
         """Fit the gradient boosting model.
 
         Parameters
@@ -1344,6 +1357,19 @@ class GradientBoostingClassifier(BaseGradientBoosting, ClassifierMixin):
             classification, splits are also ignored if they would result in any
             single class carrying a negative weight in either child node.
 
+        categorical : array of indices, or boolean mask, shape = \
+                      [n_features], or ``'All'`` or ``'None'``
+            Indicates which features should be considered as
+            categorical rather than ordinal. For decision trees, the
+            maximum number of categories is 64, though the real-world
+            limit will be much lower because evaluating splits has
+            :math:`\mathcal{O}(2^N)` time complexity, for :math:`N`
+            categories. Extra-randomized trees do not have this
+            limitation because they do not try to find the best
+            split. The maximum number of categories for these is
+            :math:`2^{31}`. The feature values must be integers in the
+            range :math:`[0, N)`.
+
         monitor : callable, optional
             The monitor is called after each iteration with the current
             iteration, a reference to the estimator and the local variables of
@@ -1361,8 +1387,8 @@ class GradientBoostingClassifier(BaseGradientBoosting, ClassifierMixin):
         y = column_or_1d(y, warn=True)
         self.classes_, y = np.unique(y, return_inverse=True)
         self.n_classes_ = len(self.classes_)
-        return super(GradientBoostingClassifier, self).fit(X, y, sample_weight,
-                                                           monitor)
+        return super(GradientBoostingClassifier, self).fit(
+            X, y, sample_weight, categorical, monitor)
 
     def predict_proba(self, X):
         """Predict class probabilities for X.
@@ -1606,7 +1632,7 @@ class GradientBoostingRegressor(BaseGradientBoosting, RegressorMixin):
             random_state, alpha, verbose, max_leaf_nodes=max_leaf_nodes,
             warm_start=warm_start)
 
-    def fit(self, X, y, sample_weight=None, monitor=None):
+    def fit(self, X, y, sample_weight=None, categorical='None', monitor=None):
         """Fit the gradient boosting model.
 
         Parameters
@@ -1628,6 +1654,19 @@ class GradientBoostingRegressor(BaseGradientBoosting, RegressorMixin):
             classification, splits are also ignored if they would result in any
             single class carrying a negative weight in either child node.
 
+        categorical : array of indices, or boolean mask, shape = \
+                      [n_features], or ``'All'`` or ``'None'``
+            Indicates which features should be considered as
+            categorical rather than ordinal. For decision trees, the
+            maximum number of categories is 64, though the real-world
+            limit will be much lower because evaluating splits has
+            :math:`\mathcal{O}(2^N)` time complexity, for :math:`N`
+            categories. Extra-randomized trees do not have this
+            limitation because they do not try to find the best
+            split. The maximum number of categories for these is
+            :math:`2^{31}`. The feature values must be integers in the
+            range :math:`[0, N)`.
+
         monitor : callable, optional
             The monitor is called after each iteration with the current
             iteration, a reference to the estimator and the local variables of
@@ -1643,8 +1682,8 @@ class GradientBoostingRegressor(BaseGradientBoosting, RegressorMixin):
             Returns self.
         """
         self.n_classes_ = 1
-        return super(GradientBoostingRegressor, self).fit(X, y, sample_weight,
-                                                          monitor)
+        return super(GradientBoostingRegressor, self).fit(
+            X, y, sample_weight, categorical, monitor)
 
     def predict(self, X):
         """Predict regression target for X.
