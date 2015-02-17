@@ -15,6 +15,7 @@ from __future__ import division
 
 import numbers
 import numpy as np
+from itertools import izip, count
 from abc import ABCMeta, abstractmethod
 
 from ..base import BaseEstimator, ClassifierMixin, RegressorMixin
@@ -263,14 +264,13 @@ class BaseDecisionTree(six.with_metaclass(ABCMeta, BaseEstimator,
 
         # Determine the number of categories in each categorical feature
         n_categories = np.zeros(self.n_features_, dtype=np.int32) - 1
+        self.categoryMap = [None] * self.n_features_
         for iFeature in categorical:
-            Xf = set(np.round(X[:, iFeature]).astype(np.int32))
-            if Xf != set(range(len(Xf))):
-                raise ValueError("Values of categorical feature at index %d"
-                                 " must span the range [0, %d)." %
-                                 (iFeature, len(Xf)))
-            else:
-                n_categories[iFeature] = len(Xf)
+            roundedX = np.round(X[:, iFeature]).astype('int64')
+            self.categoryMap[iFeature] = dict(izip(set(roundedX), count()))
+            X[:, iFeature] = np.array([self.categoryMap[iFeature][x]
+                                       for x in roundedX]).astype(DTYPE)
+            n_categories[iFeature] = len(self.categoryMap[iFeature])
 
         # Set min_weight_leaf from min_weight_fraction_leaf
         if self.min_weight_fraction_leaf != 0. and sample_weight is not None:
@@ -354,6 +354,16 @@ class BaseDecisionTree(six.with_metaclass(ABCMeta, BaseEstimator,
                              " match the input. Model n_features is %s and "
                              " input n_features is %s "
                              % (self.n_features_, n_features))
+
+        # Map categorical features onto integers
+        n_categories = self.tree_.n_categories
+        for iFeature in np.nonzero(n_categories != -1)[0]:
+            roundedX = np.round(X[:, iFeature]).astype('int64')
+            newCat = set(roundedX) - set(self.categoryMap[iFeature])
+            newCatMap = dict(izip(newCat, count(n_categories[iFeature])))
+            X[:, iFeature] = np.array(
+                [self.categoryMap[iFeature].get(x, newCatMap.get(x))
+                 for x in roundedX]).astype(DTYPE)
 
         proba = self.tree_.predict(X)
 
@@ -563,6 +573,16 @@ class DecisionTreeClassifier(BaseDecisionTree, ClassifierMixin):
                              " match the input. Model n_features is %s and "
                              " input n_features is %s "
                              % (self.n_features_, n_features))
+
+        # Map categorical features onto integers
+        n_categories = self.tree_.n_categories
+        for iFeature in np.nonzero(n_categories != -1)[0]:
+            roundedX = np.round(X[:, iFeature]).astype('int64')
+            newCat = set(roundedX) - set(self.categoryMap[iFeature])
+            newCatMap = dict(izip(newCat, count(n_categories[iFeature])))
+            X[:, iFeature] = np.array(
+                [self.categoryMap[iFeature].get(x, newCatMap.get(x))
+                 for x in roundedX]).astype(DTYPE)
 
         proba = self.tree_.predict(X)
 
