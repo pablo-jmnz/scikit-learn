@@ -133,7 +133,8 @@ cdef class Splitter:
     # This allows optimization with depth-based tree building.
 
     # Methods
-    cdef void init(self, np.ndarray X, np.ndarray y, DOUBLE_t* sample_weight)
+    cdef void init(self, np.ndarray X, np.ndarray y, DOUBLE_t* sample_weight,
+                   INT32_t *n_categories)
 
     cdef void node_reset(self, SIZE_t start, SIZE_t end,
                          double* weighted_n_node_samples) nogil
@@ -232,7 +233,7 @@ cdef class TreeBuilder:
     cdef SIZE_t max_depth           # Maximal tree depth
 
     cpdef build(self, Tree tree, np.ndarray X, np.ndarray y,
-                np.ndarray sample_weight=*)
+                np.ndarray sample_weight=*, np.ndarray n_categories=*)
 
 # =============================================================================
 # Module-level function for traversing a tree

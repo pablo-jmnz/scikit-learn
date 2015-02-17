@@ -299,7 +299,6 @@ class BaseDecisionTree(six.with_metaclass(ABCMeta, BaseEstimator,
                                                 self.min_samples_leaf,
                                                 min_weight_leaf,
                                                 random_state)
-        splitter.n_categories = n_categories
 
         self.tree_ = Tree(self.n_features_, self.n_classes_, self.n_outputs_)
         self.tree_.n_categories = n_categories
@@ -317,7 +316,7 @@ class BaseDecisionTree(six.with_metaclass(ABCMeta, BaseEstimator,
                                            max_depth,
                                            max_leaf_nodes)
 
-        builder.build(self.tree_, X, y, sample_weight)
+        builder.build(self.tree_, X, y, sample_weight, n_categories)
 
         if self.n_outputs_ == 1:
             self.n_classes_ = self.n_classes_[0]
