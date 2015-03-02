@@ -1485,7 +1485,7 @@ cdef class RandomSplitter(Splitter):
         cdef bint is_categorical
         cdef INT32_t* n_categories = self.n_categories
         cdef SIZE_t split_n_draw
-        cdef UINT32_t split_seed
+        cdef UINT64_t split_seed
         cdef UINT32_t* random_state = &self.rand_r_state
         cdef SIZE_t p, q
         cdef SIZE_t partition_end
