@@ -949,6 +949,7 @@ cdef class Splitter:
         free(self.constant_features)
         free(self.feature_values)
         free(self.n_categories)
+        free(self._bit_cache)
 
     def __getstate__(self):
         return {}
@@ -1012,6 +1013,13 @@ cdef class Splitter:
         for i in range(n_features):
             self.n_categories[i] = (-1 if n_categories == NULL
                                     else n_categories[i])
+
+        # If needed, allocate cache space to hold split info
+        self._bit_cache = NULL
+        cdef UINT32_t max_n_categories = max(
+            [self.n_categories[i] for i in range(n_features)])
+        if max_n_categories > 0:
+            safe_realloc(&self._bit_cache, (max_n_categories + 7) / 8)
 
     cdef void node_reset(self, SIZE_t start, SIZE_t end,
                          double* weighted_n_node_samples) nogil:
@@ -1078,6 +1086,7 @@ cdef class Splitter:
         cdef DTYPE_t* Xf = self.feature_values
         cdef SIZE_t min_samples_leaf = self.min_samples_leaf
         cdef double min_weight_leaf = self.min_weight_leaf
+        cdef SplitValue *split
 
         is_categorical = n_categories[current.feature] >= 1
         # Evaluate all splits
@@ -1096,11 +1105,15 @@ cdef class Splitter:
                     p += 2  # LSB must always be 0
 
                 # Partition
+                split = <SplitValue *>(&p)
+                make_bit_cache(split[0], n_categories[current.feature],
+                               self._bit_cache)
                 partition_end = end
                 q = start
                 while q < partition_end:
-                    if goes_left(Xf[q], (<SplitValue*>(&p))[0],
-                                 n_categories[current.feature]):
+                    if goes_left(Xf[q], split[0],
+                                 n_categories[current.feature],
+                                 self._bit_cache):
                         q += 1
                     else:
                         partition_end -= 1
@@ -1267,13 +1280,15 @@ cdef class Splitter:
 
         # Reorganize into samples[start:best.pos] + samples[best.pos:end]
         if best.pos < end:
+            make_bit_cache(best.split_value, n_categories[best.feature],
+                           self._bit_cache)
             partition_end = end
             p = start
 
             while p < partition_end:
                 if goes_left(X[X_sample_stride * samples[p] +
                                X_fx_stride * best.feature], best.split_value,
-                             n_categories[best.feature]):
+                             n_categories[best.feature], self._bit_cache):
                     p += 1
 
                 else:
@@ -1514,11 +1529,13 @@ cdef class RandomSplitter(Splitter):
                 current.split_value.threshold = min_value
 
         # Partition
+        make_bit_cache(current.split_value, n_categories[current.feature],
+                       self._bit_cache)
         partition_end = end
         p = start
         while p < partition_end:
             if goes_left(Xf[p], current.split_value,
-                         n_categories[current.feature]):
+                         n_categories[current.feature], self._bit_cache):
                 p += 1
             else:
                 partition_end -= 1
@@ -2194,6 +2211,7 @@ cdef class Tree:
         free(self.value)
         free(self.nodes)
         free(self.n_categories)
+        self.delete_bit_caches()
 
     def __reduce__(self):
         """Reduce re-implementation, for pickling."""
@@ -2329,6 +2347,34 @@ cdef class Tree:
 
         return node_id
 
+    cdef void populate_bit_caches(self):
+        """Allocates and populates bit caches for nodes that split on
+        categorical features. Should be run before every tree traversal."""
+        cdef Node* node = self.nodes
+        cdef Node* end_node = self.nodes + self.node_count
+        cdef SIZE_t n_categories = 0
+
+        while node != end_node:
+            node._bit_cache = NULL
+            if node.left_child != _TREE_LEAF:
+                n_categories = self.n_categories[node.feature]
+                if n_categories > 0:
+                    safe_realloc(&node._bit_cache, (n_categories + 7) / 8)
+                    make_bit_cache(node.split_value, n_categories,
+                                   node._bit_cache)
+            node += 1
+
+    cdef void delete_bit_caches(self):
+        """Deallocates the bit cache of each node in the tree. Should be run
+        after every tree traversal."""
+        cdef Node* node = self.nodes
+        cdef Node* end_node = self.nodes + self.node_count
+
+        while node != end_node:
+            free(node._bit_cache)
+            node._bit_cache = NULL
+            node += 1
+
     cpdef np.ndarray predict(self, np.ndarray[DTYPE_t, ndim=2] X):
         """Predict target for X."""
         out = self._get_value_ndarray().take(self.apply(X), axis=0,
@@ -2346,6 +2392,8 @@ cdef class Tree:
         cdef np.ndarray[SIZE_t] out = np.zeros((n_samples,), dtype=np.intp)
         cdef SIZE_t* out_data = <SIZE_t*> out.data
 
+        self.populate_bit_caches()
+
         with nogil:
             for i in range(n_samples):
                 node = self.nodes
@@ -2354,12 +2402,15 @@ cdef class Tree:
                 while node.left_child != _TREE_LEAF:
                     # ... and node.right_child != _TREE_LEAF:
                     if goes_left(X[i, node.feature], node.split_value,
-                                 self.n_categories[node.feature]):
+                                 self.n_categories[node.feature],
+                                 node._bit_cache):
                         node = &self.nodes[node.left_child]
                     else:
                         node = &self.nodes[node.right_child]
 
                 out_data[i] = <SIZE_t>(node - self.nodes)  # node offset
+
+        self.delete_bit_caches()
 
         return out
 
@@ -2520,10 +2571,27 @@ cdef inline double rand_uniform(double low, double high,
 cdef inline double log(double x) nogil:
     return ln(x) / ln(2.0)
 
-cdef bint goes_left(DTYPE_t feature_value, SplitValue split,
-                    SIZE_t n_categories) nogil:
-    """Determine whether a sample goes to the left or right child node."""
+cdef inline void make_bit_cache(SplitValue split, SIZE_t n_categories,
+                                UINT8_t *bit_cache) nogil:
+    """Regenerate and store the random numbers for a split."""
     cdef UINT32_t rng_seed
+    cdef SIZE_t q
+    cdef UINT32_t val, idx, shift
+
+    if n_categories > 0 and split.cat_split & 1 == 1:
+        for q in range((n_categories + 7) / 8):
+            bit_cache[q] = 0
+        rng_seed = split.cat_split >> 32;
+        for q in range((split.cat_split & <SIZE_t>0xFFFFFFFF) >> 1):
+            val = rand_int(0, n_categories, &rng_seed)
+            idx = val // 8
+            shift = val % 8
+            bit_cache[idx] |= (1 << shift)
+
+cdef inline bint goes_left(DTYPE_t feature_value, SplitValue split,
+                           SIZE_t n_categories, UINT8_t *bit_cache) nogil:
+    """Determine whether a sample goes to the left or right child node."""
+    cdef UINT32_t idx, shift
 
     if n_categories < 1:
         # Non-categorical feature
@@ -2533,9 +2601,9 @@ cdef bint goes_left(DTYPE_t feature_value, SplitValue split,
         return (split.cat_split >> <SIZE_t>feature_value) & 1
     else:
         # Random model
-        rng_seed = split.cat_split >> 32
-        for q in range((split.cat_split & <SIZE_t>0xFFFFFFFF) >> 1):
-            if (<SIZE_t>feature_value ==
-                    rand_int(0, n_categories, &rng_seed)):
-                return 1
-        return 0
+        idx = <SIZE_t>feature_value // 8
+        shift = <SIZE_t>feature_value % 8
+        if <SIZE_t>feature_value < n_categories:
+            return (bit_cache[idx] >> shift) & 1
+        else:
+            return 0
