@@ -1016,7 +1016,7 @@ cdef class Splitter:
 
         # If needed, allocate cache space to hold split info
         self._bit_cache = NULL
-        cdef UINT32_t max_n_categories = max(
+        cdef INT32_t max_n_categories = max(
             [self.n_categories[i] for i in range(n_features)])
         if max_n_categories > 0:
             safe_realloc(&self._bit_cache, (max_n_categories + 7) / 8)
