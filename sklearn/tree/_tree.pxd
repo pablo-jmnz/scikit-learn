@@ -18,7 +18,7 @@ ctypedef np.npy_int32 INT32_t            # Signed 32 bit integer
 ctypedef np.npy_uint32 UINT32_t          # Unsigned 32 bit integer
 ctypedef np.npy_uint64 UINT64_t          # Unsigned 64 bit integer
 
-cdef union SplitValue:
+ctypedef union SplitValue:
     # Union type to generalize the concept of a threshold to
     # categorical features. For non-categorical features, use the
     # threshold member. It acts just as before, where feature values
@@ -205,8 +205,8 @@ cdef class Tree:
 
     # Methods
     cdef SIZE_t _add_node(self, SIZE_t parent, bint is_left, bint is_leaf,
-                          SIZE_t feature, double threshold, double impurity,
-                          SIZE_t n_node_samples,
+                          SIZE_t feature, SplitValue split_value,
+                          double impurity, SIZE_t n_node_samples,
                           double weighted_n_samples) nogil
     cdef void _resize(self, SIZE_t capacity) except *
     cdef int _resize_c(self, SIZE_t capacity=*) nogil

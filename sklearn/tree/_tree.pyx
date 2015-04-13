@@ -2666,7 +2666,6 @@ cdef class DepthFirstTreeBuilder(TreeBuilder):
         cdef SplitRecord split
         cdef SIZE_t node_id
 
-        cdef double threshold
         cdef double impurity = INFINITY
         cdef SIZE_t n_constant_features
         cdef bint is_leaf
@@ -2714,7 +2713,7 @@ cdef class DepthFirstTreeBuilder(TreeBuilder):
                     is_leaf = is_leaf or (split.pos >= end)
 
                 node_id = tree._add_node(parent, is_left, is_leaf, split.feature,
-                                         split.split_value.threshold, impurity,
+                                         split.split_value, impurity,
                                          n_node_samples, weighted_n_node_samples)
 
                 # Store value for all nodes, to facilitate tree/model
@@ -2924,7 +2923,7 @@ cdef class BestFirstTreeBuilder(TreeBuilder):
                                  if parent != NULL
                                  else _TREE_UNDEFINED,
                                  is_left, is_leaf,
-                                 split.feature, split.split_value.threshold,
+                                 split.feature, split.split_value,
                                  impurity, n_node_samples, weighted_n_node_samples)
         if node_id == <SIZE_t>(-1):
             return -1
@@ -3185,7 +3184,7 @@ cdef class Tree:
         return 0
 
     cdef SIZE_t _add_node(self, SIZE_t parent, bint is_left, bint is_leaf,
-                          SIZE_t feature, double threshold, double impurity,
+                          SIZE_t feature, SplitValue split_value, double impurity,
                           SIZE_t n_node_samples, double weighted_n_node_samples) nogil:
         """Add a node to the tree.
 
@@ -3219,7 +3218,7 @@ cdef class Tree:
         else:
             # left_child and right_child will be set later
             node.feature = feature
-            node.split_value.threshold = threshold
+            node.split_value = split_value
 
         self.node_count += 1
 
@@ -3273,8 +3272,8 @@ cdef class Tree:
                 # While node not a leaf
                 while node.left_child != _TREE_LEAF:
                     # ... and node.right_child != _TREE_LEAF:
-                    if X_ptr[X_sample_stride * i +
-                             X_fx_stride * node.feature] <= node.split_value.threshold:
+                    if goes_left(X_ptr[X_sample_stride * i + X_fx_stride * node.feature],
+                                 node.split_value, self.n_categories[node.feature]):
                         node = &self.nodes[node.left_child]
                     else:
                         node = &self.nodes[node.right_child]
@@ -3346,7 +3345,8 @@ cdef class Tree:
                     else:
                         feature_value = 0.
 
-                    if feature_value <= node.split_value.threshold:
+                    if goes_left(feature_value, node.split_value,
+                                 self.n_categories[node.feature]):
                         node = &self.nodes[node.left_child]
                     else:
                         node = &self.nodes[node.right_child]
