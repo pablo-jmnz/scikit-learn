@@ -1907,6 +1907,10 @@ static CYTHON_INLINE long __Pyx_pow_long(long, long); /* proto */
   #define __PYX_FORCE_INIT_THREADS 0
 #endif
 
+static CYTHON_INLINE PyObject* __Pyx_PyInt_From_npy_uint64(npy_uint64 value);
+
+static CYTHON_INLINE npy_uint64 __Pyx_PyInt_As_npy_uint64(PyObject *);
+
 #if CYTHON_CCOMPLEX
   #ifdef __cplusplus
     #define __Pyx_CREAL(z) ((z).real())
@@ -2008,6 +2012,8 @@ static CYTHON_INLINE __pyx_t_double_complex __pyx_t_double_complex_from_parts(do
 static CYTHON_INLINE long __Pyx_PyInt_As_long(PyObject *);
 
 static int __Pyx_check_binary_version(void);
+
+static int __Pyx_ExportFunction(const char *name, void (*f)(void), const char *sig);
 
 #if !defined(__Pyx_PyIdentifier_FromString)
 #if PY_MAJOR_VERSION < 3
@@ -28370,6 +28376,7 @@ static CYTHON_INLINE double __pyx_f_7sklearn_4tree_5_tree_rand_uniform(double __
  * 
  * cdef inline double log(double x) nogil:             # <<<<<<<<<<<<<<
  *     return ln(x) / ln(2.0)
+ * 
  */
 
 static CYTHON_INLINE double __pyx_f_7sklearn_4tree_5_tree_log(double __pyx_v_x) {
@@ -28379,6 +28386,8 @@ static CYTHON_INLINE double __pyx_f_7sklearn_4tree_5_tree_log(double __pyx_v_x) 
  * 
  * cdef inline double log(double x) nogil:
  *     return ln(x) / ln(2.0)             # <<<<<<<<<<<<<<
+ * 
+ * cdef bint goes_left(DTYPE_t feature_value, SplitValue split,
  */
   __pyx_r = (log(__pyx_v_x) / log(2.0));
   goto __pyx_L0;
@@ -28388,6 +28397,129 @@ static CYTHON_INLINE double __pyx_f_7sklearn_4tree_5_tree_log(double __pyx_v_x) 
  * 
  * cdef inline double log(double x) nogil:             # <<<<<<<<<<<<<<
  *     return ln(x) / ln(2.0)
+ * 
+ */
+
+  /* function exit code */
+  __pyx_L0:;
+  return __pyx_r;
+}
+
+/* "sklearn/tree/_tree.pyx":3521
+ *     return ln(x) / ln(2.0)
+ * 
+ * cdef bint goes_left(DTYPE_t feature_value, SplitValue split,             # <<<<<<<<<<<<<<
+ *                     INT32_t n_categories) nogil:
+ *     """Determine whether a sample goes to the left or right child node."""
+ */
+
+static int __pyx_f_7sklearn_4tree_5_tree_goes_left(__pyx_t_7sklearn_4tree_5_tree_DTYPE_t __pyx_v_feature_value, union __pyx_t_7sklearn_4tree_5_tree_SplitValue __pyx_v_split, __pyx_t_7sklearn_4tree_5_tree_INT32_t __pyx_v_n_categories) {
+  __pyx_t_7sklearn_4tree_5_tree_UINT32_t __pyx_v_rng_seed;
+  CYTHON_UNUSED __pyx_t_7sklearn_4tree_5_tree_UINT64_t __pyx_v_q;
+  int __pyx_r;
+  int __pyx_t_1;
+  __pyx_t_7sklearn_4tree_5_tree_UINT64_t __pyx_t_2;
+  __pyx_t_7sklearn_4tree_5_tree_UINT64_t __pyx_t_3;
+
+  /* "sklearn/tree/_tree.pyx":3526
+ *     cdef UINT32_t rng_seed
+ * 
+ *     if n_categories < 1:             # <<<<<<<<<<<<<<
+ *         # Non-categorical feature
+ *         return feature_value <= split.threshold
+ */
+  __pyx_t_1 = ((__pyx_v_n_categories < 1) != 0);
+  if (__pyx_t_1) {
+
+    /* "sklearn/tree/_tree.pyx":3528
+ *     if n_categories < 1:
+ *         # Non-categorical feature
+ *         return feature_value <= split.threshold             # <<<<<<<<<<<<<<
+ *     elif (split.cat_split & 1 == 0):
+ *         # Bitfield model
+ */
+    __pyx_r = (__pyx_v_feature_value <= __pyx_v_split.threshold);
+    goto __pyx_L0;
+  }
+
+  /* "sklearn/tree/_tree.pyx":3529
+ *         # Non-categorical feature
+ *         return feature_value <= split.threshold
+ *     elif (split.cat_split & 1 == 0):             # <<<<<<<<<<<<<<
+ *         # Bitfield model
+ *         return (split.cat_split >> <SIZE_t>feature_value) & 1
+ */
+  __pyx_t_1 = (((__pyx_v_split.cat_split & 1) == 0) != 0);
+  if (__pyx_t_1) {
+
+    /* "sklearn/tree/_tree.pyx":3531
+ *     elif (split.cat_split & 1 == 0):
+ *         # Bitfield model
+ *         return (split.cat_split >> <SIZE_t>feature_value) & 1             # <<<<<<<<<<<<<<
+ *     else:
+ *         # Random model
+ */
+    __pyx_r = ((__pyx_v_split.cat_split >> ((__pyx_t_7sklearn_4tree_5_tree_SIZE_t)__pyx_v_feature_value)) & 1);
+    goto __pyx_L0;
+  }
+  /*else*/ {
+
+    /* "sklearn/tree/_tree.pyx":3534
+ *     else:
+ *         # Random model
+ *         rng_seed = split.cat_split >> 32             # <<<<<<<<<<<<<<
+ *         for q in range((split.cat_split & <SIZE_t>0xFFFFFFFF) >> 1):
+ *             if (<SIZE_t>feature_value ==
+ */
+    __pyx_v_rng_seed = (__pyx_v_split.cat_split >> 32);
+
+    /* "sklearn/tree/_tree.pyx":3535
+ *         # Random model
+ *         rng_seed = split.cat_split >> 32
+ *         for q in range((split.cat_split & <SIZE_t>0xFFFFFFFF) >> 1):             # <<<<<<<<<<<<<<
+ *             if (<SIZE_t>feature_value ==
+ *                     rand_int(0, n_categories, &rng_seed)):
+ */
+    __pyx_t_2 = ((__pyx_v_split.cat_split & ((__pyx_t_7sklearn_4tree_5_tree_SIZE_t)0xFFFFFFFF)) >> 1);
+    for (__pyx_t_3 = 0; __pyx_t_3 < __pyx_t_2; __pyx_t_3+=1) {
+      __pyx_v_q = __pyx_t_3;
+
+      /* "sklearn/tree/_tree.pyx":3536
+ *         rng_seed = split.cat_split >> 32
+ *         for q in range((split.cat_split & <SIZE_t>0xFFFFFFFF) >> 1):
+ *             if (<SIZE_t>feature_value ==             # <<<<<<<<<<<<<<
+ *                     rand_int(0, n_categories, &rng_seed)):
+ *                 return 1
+ */
+      __pyx_t_1 = ((((__pyx_t_7sklearn_4tree_5_tree_SIZE_t)__pyx_v_feature_value) == __pyx_f_7sklearn_4tree_5_tree_rand_int(0, __pyx_v_n_categories, (&__pyx_v_rng_seed))) != 0);
+      if (__pyx_t_1) {
+
+        /* "sklearn/tree/_tree.pyx":3538
+ *             if (<SIZE_t>feature_value ==
+ *                     rand_int(0, n_categories, &rng_seed)):
+ *                 return 1             # <<<<<<<<<<<<<<
+ *         return 0
+ */
+        __pyx_r = 1;
+        goto __pyx_L0;
+      }
+    }
+
+    /* "sklearn/tree/_tree.pyx":3539
+ *                     rand_int(0, n_categories, &rng_seed)):
+ *                 return 1
+ *         return 0             # <<<<<<<<<<<<<<
+ */
+    __pyx_r = 0;
+    goto __pyx_L0;
+  }
+
+  /* "sklearn/tree/_tree.pyx":3521
+ *     return ln(x) / ln(2.0)
+ * 
+ * cdef bint goes_left(DTYPE_t feature_value, SplitValue split,             # <<<<<<<<<<<<<<
+ *                     INT32_t n_categories) nogil:
+ *     """Determine whether a sample goes to the left or right child node."""
  */
 
   /* function exit code */
@@ -32572,6 +32704,7 @@ PyMODINIT_FUNC PyInit__tree(void)
   /*--- Global init code ---*/
   /*--- Variable export code ---*/
   /*--- Function export code ---*/
+  if (__Pyx_ExportFunction("goes_left", (void (*)(void))__pyx_f_7sklearn_4tree_5_tree_goes_left, "int (__pyx_t_7sklearn_4tree_5_tree_DTYPE_t, union __pyx_t_7sklearn_4tree_5_tree_SplitValue, __pyx_t_7sklearn_4tree_5_tree_INT32_t)") < 0) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 1; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   /*--- Type init code ---*/
   __pyx_vtabptr_7sklearn_4tree_5_tree_Criterion = &__pyx_vtable_7sklearn_4tree_5_tree_Criterion;
   __pyx_vtable_7sklearn_4tree_5_tree_Criterion.init = (void (*)(struct __pyx_obj_7sklearn_4tree_5_tree_Criterion *, __pyx_t_7sklearn_4tree_5_tree_DOUBLE_t *, __pyx_t_7sklearn_4tree_5_tree_SIZE_t, __pyx_t_7sklearn_4tree_5_tree_DOUBLE_t *, double, __pyx_t_7sklearn_4tree_5_tree_SIZE_t *, __pyx_t_7sklearn_4tree_5_tree_SIZE_t, __pyx_t_7sklearn_4tree_5_tree_SIZE_t))__pyx_f_7sklearn_4tree_5_tree_9Criterion_init;
@@ -35548,6 +35681,127 @@ static CYTHON_INLINE long __Pyx_pow_long(long b, long e) {
     return t;
 }
 
+static CYTHON_INLINE PyObject* __Pyx_PyInt_From_npy_uint64(npy_uint64 value) {
+    const npy_uint64 neg_one = (npy_uint64) -1, const_zero = 0;
+    const int is_unsigned = neg_one > const_zero;
+    if (is_unsigned) {
+        if (sizeof(npy_uint64) < sizeof(long)) {
+            return PyInt_FromLong((long) value);
+        } else if (sizeof(npy_uint64) <= sizeof(unsigned long)) {
+            return PyLong_FromUnsignedLong((unsigned long) value);
+        } else if (sizeof(npy_uint64) <= sizeof(unsigned long long)) {
+            return PyLong_FromUnsignedLongLong((unsigned long long) value);
+        }
+    } else {
+        if (sizeof(npy_uint64) <= sizeof(long)) {
+            return PyInt_FromLong((long) value);
+        } else if (sizeof(npy_uint64) <= sizeof(long long)) {
+            return PyLong_FromLongLong((long long) value);
+        }
+    }
+    {
+        int one = 1; int little = (int)*(unsigned char *)&one;
+        unsigned char *bytes = (unsigned char *)&value;
+        return _PyLong_FromByteArray(bytes, sizeof(npy_uint64),
+                                     little, !is_unsigned);
+    }
+}
+
+static CYTHON_INLINE npy_uint64 __Pyx_PyInt_As_npy_uint64(PyObject *x) {
+    const npy_uint64 neg_one = (npy_uint64) -1, const_zero = 0;
+    const int is_unsigned = neg_one > const_zero;
+#if PY_MAJOR_VERSION < 3
+    if (likely(PyInt_Check(x))) {
+        if (sizeof(npy_uint64) < sizeof(long)) {
+            __PYX_VERIFY_RETURN_INT(npy_uint64, long, PyInt_AS_LONG(x))
+        } else {
+            long val = PyInt_AS_LONG(x);
+            if (is_unsigned && unlikely(val < 0)) {
+                goto raise_neg_overflow;
+            }
+            return (npy_uint64) val;
+        }
+    } else
+#endif
+    if (likely(PyLong_Check(x))) {
+        if (is_unsigned) {
+#if CYTHON_COMPILING_IN_CPYTHON && PY_MAJOR_VERSION >= 3
+ #if CYTHON_USE_PYLONG_INTERNALS
+            switch (Py_SIZE(x)) {
+                case  0: return 0;
+                case  1: __PYX_VERIFY_RETURN_INT(npy_uint64, digit, ((PyLongObject*)x)->ob_digit[0]);
+            }
+ #endif
+#endif
+            if (unlikely(Py_SIZE(x) < 0)) {
+                goto raise_neg_overflow;
+            }
+            if (sizeof(npy_uint64) <= sizeof(unsigned long)) {
+                __PYX_VERIFY_RETURN_INT(npy_uint64, unsigned long, PyLong_AsUnsignedLong(x))
+            } else if (sizeof(npy_uint64) <= sizeof(unsigned long long)) {
+                __PYX_VERIFY_RETURN_INT(npy_uint64, unsigned long long, PyLong_AsUnsignedLongLong(x))
+            }
+        } else {
+#if CYTHON_COMPILING_IN_CPYTHON && PY_MAJOR_VERSION >= 3
+ #if CYTHON_USE_PYLONG_INTERNALS
+            switch (Py_SIZE(x)) {
+                case  0: return 0;
+                case  1: __PYX_VERIFY_RETURN_INT(npy_uint64,  digit, +(((PyLongObject*)x)->ob_digit[0]));
+                case -1: __PYX_VERIFY_RETURN_INT(npy_uint64, sdigit, -(sdigit) ((PyLongObject*)x)->ob_digit[0]);
+            }
+ #endif
+#endif
+            if (sizeof(npy_uint64) <= sizeof(long)) {
+                __PYX_VERIFY_RETURN_INT(npy_uint64, long, PyLong_AsLong(x))
+            } else if (sizeof(npy_uint64) <= sizeof(long long)) {
+                __PYX_VERIFY_RETURN_INT(npy_uint64, long long, PyLong_AsLongLong(x))
+            }
+        }
+        {
+#if CYTHON_COMPILING_IN_PYPY && !defined(_PyLong_AsByteArray)
+            PyErr_SetString(PyExc_RuntimeError,
+                            "_PyLong_AsByteArray() not available in PyPy, cannot convert large numbers");
+#else
+            npy_uint64 val;
+            PyObject *v = __Pyx_PyNumber_Int(x);
+ #if PY_MAJOR_VERSION < 3
+            if (likely(v) && !PyLong_Check(v)) {
+                PyObject *tmp = v;
+                v = PyNumber_Long(tmp);
+                Py_DECREF(tmp);
+            }
+ #endif
+            if (likely(v)) {
+                int one = 1; int is_little = (int)*(unsigned char *)&one;
+                unsigned char *bytes = (unsigned char *)&val;
+                int ret = _PyLong_AsByteArray((PyLongObject *)v,
+                                              bytes, sizeof(val),
+                                              is_little, !is_unsigned);
+                Py_DECREF(v);
+                if (likely(!ret))
+                    return val;
+            }
+#endif
+            return (npy_uint64) -1;
+        }
+    } else {
+        npy_uint64 val;
+        PyObject *tmp = __Pyx_PyNumber_Int(x);
+        if (!tmp) return (npy_uint64) -1;
+        val = __Pyx_PyInt_As_npy_uint64(tmp);
+        Py_DECREF(tmp);
+        return val;
+    }
+raise_overflow:
+    PyErr_SetString(PyExc_OverflowError,
+        "value too large to convert to npy_uint64");
+    return (npy_uint64) -1;
+raise_neg_overflow:
+    PyErr_SetString(PyExc_OverflowError,
+        "can't convert negative value to npy_uint64");
+    return (npy_uint64) -1;
+}
+
 #if CYTHON_CCOMPLEX
   #ifdef __cplusplus
     static CYTHON_INLINE __pyx_t_float_complex __pyx_t_float_complex_from_parts(float x, float y) {
@@ -35896,6 +36150,42 @@ static int __Pyx_check_binary_version(void) {
         return PyErr_WarnEx(NULL, message, 1);
     }
     return 0;
+}
+
+static int __Pyx_ExportFunction(const char *name, void (*f)(void), const char *sig) {
+    PyObject *d = 0;
+    PyObject *cobj = 0;
+    union {
+        void (*fp)(void);
+        void *p;
+    } tmp;
+    d = PyObject_GetAttrString(__pyx_m, (char *)"__pyx_capi__");
+    if (!d) {
+        PyErr_Clear();
+        d = PyDict_New();
+        if (!d)
+            goto bad;
+        Py_INCREF(d);
+        if (PyModule_AddObject(__pyx_m, (char *)"__pyx_capi__", d) < 0)
+            goto bad;
+    }
+    tmp.fp = f;
+#if PY_VERSION_HEX >= 0x02070000
+    cobj = PyCapsule_New(tmp.p, sig, 0);
+#else
+    cobj = PyCObject_FromVoidPtrAndDesc(tmp.p, (void *)sig, 0);
+#endif
+    if (!cobj)
+        goto bad;
+    if (PyDict_SetItemString(d, name, cobj) < 0)
+        goto bad;
+    Py_DECREF(cobj);
+    Py_DECREF(d);
+    return 0;
+bad:
+    Py_XDECREF(cobj);
+    Py_XDECREF(d);
+    return -1;
 }
 
 #ifndef __PYX_HAVE_RT_ImportModule
