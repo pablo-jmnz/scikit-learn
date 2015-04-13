@@ -939,6 +939,7 @@ cdef class Splitter:
         self.y = NULL
         self.y_stride = 0
         self.sample_weight = NULL
+        self.n_categories = NULL
 
         self.max_features = max_features
         self.min_samples_leaf = min_samples_leaf
@@ -951,6 +952,7 @@ cdef class Splitter:
         free(self.features)
         free(self.constant_features)
         free(self.feature_values)
+        free(self.n_categories)
 
     def __getstate__(self):
         return {}
@@ -1002,6 +1004,12 @@ cdef class Splitter:
         self.y = <DOUBLE_t*> y.data
         self.y_stride = <SIZE_t> y.strides[0] / <SIZE_t> y.itemsize
         self.sample_weight = sample_weight
+
+        # Initialize the number of categories for each feature
+        # A value of -1 indicates a non-categorical feature
+        safe_realloc(&self.n_categories, n_features)
+        for i in range(n_features):
+            self.n_categories[i] = -1
 
     cdef void node_reset(self, SIZE_t start, SIZE_t end,
                          double* weighted_n_node_samples) nogil:
@@ -3070,6 +3078,10 @@ cdef class Tree:
         self.capacity = 0
         self.value = NULL
         self.nodes = NULL
+        self.n_categories = NULL
+        safe_realloc(&self.n_categories, n_features)
+        for k in range(n_features):
+            self.n_categories[k] = -1
 
     def __dealloc__(self):
         """Destructor."""
@@ -3077,6 +3089,7 @@ cdef class Tree:
         free(self.n_classes)
         free(self.value)
         free(self.nodes)
+        free(self.n_categories)
 
     def __reduce__(self):
         """Reduce re-implementation, for pickling."""
@@ -3090,6 +3103,7 @@ cdef class Tree:
         d["node_count"] = self.node_count
         d["nodes"] = self._get_node_ndarray()
         d["values"] = self._get_value_ndarray()
+        d["n_categories"] = self._get_ncat_ndarray()
         return d
 
     def __setstate__(self, d):
@@ -3102,6 +3116,7 @@ cdef class Tree:
 
         node_ndarray = d['nodes']
         value_ndarray = d['values']
+        ncat_ndarray = d['n_categories']
 
         value_shape = (node_ndarray.shape[0], self.n_outputs,
                        self.max_n_classes)
@@ -3110,7 +3125,10 @@ cdef class Tree:
                 not node_ndarray.flags.c_contiguous or
                 value_ndarray.shape != value_shape or
                 not value_ndarray.flags.c_contiguous or
-                value_ndarray.dtype != np.float64):
+                value_ndarray.dtype != np.float64 or
+                ncat_ndarray.shape != (self.n_features,) or
+                ncat_ndarray.dtype != np.int32 or
+                not ncat_ndarray.flags.c_contiguous):
             raise ValueError('Did not recognise loaded array layout')
 
         self.capacity = node_ndarray.shape[0]
@@ -3120,6 +3138,8 @@ cdef class Tree:
                        self.capacity * sizeof(Node))
         value = memcpy(self.value, (<np.ndarray> value_ndarray).data,
                        self.capacity * self.value_stride * sizeof(double))
+        ncat = memcpy(self.n_categories, (<np.ndarray> ncat_ndarray).data,
+                      self.n_features * sizeof(INT32_t))
 
     cdef void _resize(self, SIZE_t capacity) except *:
         """Resize all inner arrays to `capacity`, if `capacity` == -1, then
@@ -3393,6 +3413,20 @@ cdef class Tree:
         arr.base = <PyObject*> self
         return arr
 
+    cdef np.ndarray _get_ncat_ndarray(self):
+        """Wraps n_categories as a 3-d Numpy array
+
+        The array keeps a reference to this Tree, which manages the underlying
+        memory.
+        """
+        cdef np.npy_intp shape[1]
+        shape[0] = <np.npy_intp> self.n_features
+        cdef np.ndarray arr
+        arr = np.PyArray_SimpleNewFromData(1, shape, np.NPY_INT32, self.n_categories)
+        Py_INCREF(self)
+        arr.base = <PyObject*> self
+        return arr
+
     cdef np.ndarray _get_node_ndarray(self):
         """Wraps nodes as a NumPy struct array
 
@@ -3427,6 +3461,7 @@ ctypedef fused realloc_ptr:
     (DTYPE_t*)
     (SIZE_t*)
     (unsigned char*)
+    (INT32_t*)
 
 cdef realloc_ptr safe_realloc(realloc_ptr* p, size_t nelems) except *:
     # sizeof(realloc_ptr[0]) would be more like idiomatic C, but causes Cython
