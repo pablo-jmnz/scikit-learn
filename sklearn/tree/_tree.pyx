@@ -1105,7 +1105,7 @@ cdef class BestSplitter(BaseDenseSplitter):
         cdef SplitRecord best, current
 
         cdef SIZE_t f_i = n_features
-        cdef SIZE_t f_j, p, tmp
+        cdef SIZE_t f_j, p, q
         cdef SIZE_t n_visited_features = 0
         # Number of features discovered to be constant during the split search
         cdef SIZE_t n_found_constants = 0
@@ -1116,6 +1116,7 @@ cdef class BestSplitter(BaseDenseSplitter):
         cdef SIZE_t n_total_constants = n_known_constants
         cdef DTYPE_t current_feature_value
         cdef SIZE_t partition_end
+        cdef bint is_categorical
 
         _init_split(&best, end)
 
@@ -1153,9 +1154,8 @@ cdef class BestSplitter(BaseDenseSplitter):
 
             if f_j < n_known_constants:
                 # f_j in the interval [n_drawn_constants, n_known_constants[
-                tmp = features[f_j]
-                features[f_j] = features[n_drawn_constants]
-                features[n_drawn_constants] = tmp
+                features[f_j], features[n_drawn_constants] = (
+                    features[n_drawn_constants], features[f_j])
 
                 n_drawn_constants += 1
 
@@ -1189,45 +1189,73 @@ cdef class BestSplitter(BaseDenseSplitter):
 
                     # Evaluate all splits
                     self.criterion.reset()
-                    p = start
+                    is_categorical = self.n_categories[current.feature] > 0
+                    p = 0 if is_categorical else start
 
-                    while p < end:
-                        while (p + 1 < end and
-                               Xf[p + 1] <= Xf[p] + FEATURE_THRESHOLD):
+                    while True:
+                        if is_categorical:
+                            # WARNING: This is O(n_samples *
+                            # 2**n_categories), and will be very slow
+                            # for more than just a few categories.
+                            if p > (1 << self.n_categories[current.feature]) - 1:
+                                break
+                            else:
+                                p += 2  # LSB must always be 0
+
+                            # Partition
+                            q = start
+                            partition_end = end
+                            while q < partition_end:
+                                if ((p >> <SIZE_t>Xf[q]) & 1):
+                                    q += 1
+                                else:
+                                    partition_end -= 1
+                                    Xf[q], Xf[partition_end] = Xf[partition_end], Xf[q]
+                                    samples[q], samples[partition_end] = (
+                                        samples[partition_end], samples[q])
+                            current.pos = q
+                        else:
+                            # Non-categorical feature
+                            while (p + 1 < end and
+                                   Xf[p + 1] <= Xf[p] + FEATURE_THRESHOLD):
+                                p += 1
+
+                            # (p + 1 >= end) or (X[samples[p + 1], current.feature] >
+                            #                    X[samples[p], current.feature])
                             p += 1
+                            # (p >= end) or (X[samples[p], current.feature] >
+                            #                X[samples[p - 1], current.feature])
 
-                        # (p + 1 >= end) or (X[samples[p + 1], current.feature] >
-                        #                    X[samples[p], current.feature])
-                        p += 1
-                        # (p >= end) or (X[samples[p], current.feature] >
-                        #                X[samples[p - 1], current.feature])
+                            if p >= end:
+                                break
 
-                        if p < end:
                             current.pos = p
 
-                            # Reject if min_samples_leaf is not guaranteed
-                            if (((current.pos - start) < min_samples_leaf) or
-                                    ((end - current.pos) < min_samples_leaf)):
-                                continue
+                        # Reject if min_samples_leaf is not guaranteed
+                        if (((current.pos - start) < min_samples_leaf) or
+                                ((end - current.pos) < min_samples_leaf)):
+                            continue
 
-                            self.criterion.update(current.pos)
+                        self.criterion.update(current.pos)
 
-                            # Reject if min_weight_leaf is not satisfied
-                            if ((self.criterion.weighted_n_left < min_weight_leaf) or
-                                    (self.criterion.weighted_n_right < min_weight_leaf)):
-                                continue
+                        # Reject if min_weight_leaf is not satisfied
+                        if ((self.criterion.weighted_n_left < min_weight_leaf) or
+                                (self.criterion.weighted_n_right < min_weight_leaf)):
+                            continue
 
-                            current.improvement = self.criterion.impurity_improvement(impurity)
+                        current.improvement = self.criterion.impurity_improvement(impurity)
 
-                            if current.improvement > best.improvement:
-                                self.criterion.children_impurity(&current.impurity_left,
-                                                                 &current.impurity_right)
+                        if current.improvement > best.improvement:
+                            self.criterion.children_impurity(&current.impurity_left,
+                                                             &current.impurity_right)
+                            if is_categorical:
+                                current.split_value.cat_split = p
+                            else:
                                 current.split_value.threshold = (Xf[p - 1] + Xf[p]) / 2.0
-
                                 if current.split_value.threshold == Xf[p]:
                                     current.split_value.threshold = Xf[p - 1]
 
-                                best = current  # copy
+                            best = current  # copy
 
         # Reorganize into samples[start:best.pos] + samples[best.pos:end]
         if best.pos < end:
@@ -1235,16 +1263,15 @@ cdef class BestSplitter(BaseDenseSplitter):
             p = start
 
             while p < partition_end:
-                if X[X_sample_stride * samples[p] +
-                     X_fx_stride * best.feature] <= best.split_value.threshold:
+                if goes_left(X[X_sample_stride * samples[p] + X_fx_stride * best.feature],
+                             best.split_value, self.n_categories[best.feature]):
                     p += 1
 
                 else:
                     partition_end -= 1
 
-                    tmp = samples[partition_end]
-                    samples[partition_end] = samples[p]
-                    samples[p] = tmp
+                    samples[p], samples[partition_end] = (
+                        samples[partition_end], samples[p])
 
         # Respect invariant for constant features: the original order of
         # element in features[:n_known_constants] must be preserved for sibling
