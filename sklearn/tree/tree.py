@@ -102,7 +102,8 @@ class BaseDecisionTree(six.with_metaclass(ABCMeta, BaseEstimator,
         self.tree_ = None
         self.max_features_ = None
 
-    def fit(self, X, y, sample_weight=None, check_input=True):
+    def fit(self, X, y, sample_weight=None, categorical='None',
+            check_input=True):
         """Build a decision tree from the training set (X, y).
 
         Parameters
@@ -124,9 +125,22 @@ class BaseDecisionTree(six.with_metaclass(ABCMeta, BaseEstimator,
             classification, splits are also ignored if they would result in any
             single class carrying a negative weight in either child node.
 
+        categorical : array-like or str
+            Array of feature indices, boolean array of length
+            n_features, ``'All'``, or ``'None'``.  Indicates which
+            features should be considered as categorical rather than
+            ordinal. For decision trees, the maximum number of
+            categories per feature is 64, though the real-world limit
+            will be much lower because evaluating splits has
+            :math:`O(2^N)` time complexity, for :math:`N`
+            categories. Extra-randomized trees do not have this
+            limitation because they do not try to find the best
+            split. For these trees, the maximum number of categories
+            per feature is :math:`2^{31}`.
+
         check_input : boolean, (default=True)
             Allow to bypass several input checking.
-            Don't use this parameter unless you know what you do.
+            Don't use this parameter unless you know what you are doing.
 
         Returns
         -------
