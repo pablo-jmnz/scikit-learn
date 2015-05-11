@@ -963,7 +963,8 @@ cdef class Splitter:
     cdef void init(self,
                    object X,
                    np.ndarray[DOUBLE_t, ndim=2, mode="c"] y,
-                   DOUBLE_t* sample_weight) except *:
+                   DOUBLE_t* sample_weight,
+                   INT32_t* n_categories) except *:
         """Initialize the splitter."""
         # Reset random state
         self.rand_r_state = self.random_state.randint(0, RAND_R_MAX)
@@ -1009,7 +1010,8 @@ cdef class Splitter:
         # A value of -1 indicates a non-categorical feature
         safe_realloc(&self.n_categories, n_features)
         for i in range(n_features):
-            self.n_categories[i] = -1
+            self.n_categories[i] = (-1 if n_categories == NULL
+                                    else n_categories[i])
 
     cdef void node_reset(self, SIZE_t start, SIZE_t end,
                          double* weighted_n_node_samples) nogil:
@@ -1058,11 +1060,12 @@ cdef class BaseDenseSplitter(Splitter):
     cdef void init(self,
                    object X,
                    np.ndarray[DOUBLE_t, ndim=2, mode="c"] y,
-                   DOUBLE_t* sample_weight) except *:
+                   DOUBLE_t* sample_weight,
+                   INT32_t* n_categories) except *:
         """Initialize the splitter."""
 
         # Call parent init
-        Splitter.init(self, X, y, sample_weight)
+        Splitter.init(self, X, y, sample_weight, n_categories)
 
         # Initialize X
         cdef np.ndarray X_ndarray = X
@@ -1527,8 +1530,8 @@ cdef class RandomSplitter(BaseDenseSplitter):
                     if is_categorical:
                         # split_n_draw is the number of categories to send left
                         # TODO: this should be a binomial draw
-                        split_n_draw = rand_int(
-                            1, self.n_categories[current.feature], random_state)
+                        split_n_draw = rand_int(1, self.n_categories[current.feature],
+                                                random_state) & <SIZE_t>0x7FFFFFFF
                         split_seed = our_rand_r(random_state)
                         current.split_value.cat_split = (
                             (split_seed << 32) | (split_n_draw << 1) | 1)
@@ -1642,12 +1645,13 @@ cdef class PresortBestSplitter(BaseDenseSplitter):
 
     cdef void init(self, object X,
                    np.ndarray[DOUBLE_t, ndim=2, mode="c"] y,
-                   DOUBLE_t* sample_weight) except *:
+                   DOUBLE_t* sample_weight,
+                   INT32_t* n_categories) except *:
 
         cdef void* sample_mask = NULL
 
         # Call parent initializer
-        BaseDenseSplitter.init(self, X, y, sample_weight)
+        BaseDenseSplitter.init(self, X, y, sample_weight, n_categories)
 
         cdef np.ndarray X_ndarray = X
 
@@ -1916,11 +1920,12 @@ cdef class BaseSparseSplitter(Splitter):
     cdef void init(self,
                    object X,
                    np.ndarray[DOUBLE_t, ndim=2, mode="c"] y,
-                   DOUBLE_t* sample_weight) except *:
+                   DOUBLE_t* sample_weight,
+                   INT32_t* n_categories) except *:
         """Initialize the splitter."""
 
         # Call parent init
-        Splitter.init(self, X, y, sample_weight)
+        Splitter.init(self, X, y, sample_weight, n_categories)
 
         if not isinstance(X, csc_matrix):
             raise ValueError("X should be in csc format")
@@ -2640,7 +2645,7 @@ cdef class TreeBuilder:
     """Interface for different tree building strategies. """
 
     cpdef build(self, Tree tree, object X, np.ndarray y,
-                np.ndarray sample_weight=None):
+                np.ndarray sample_weight=None, np.ndarray n_categories=None):
         """Build a decision tree from the training set (X, y)."""
         pass
 
@@ -2688,7 +2693,7 @@ cdef class DepthFirstTreeBuilder(TreeBuilder):
         self.max_depth = max_depth
 
     cpdef build(self, Tree tree, object X, np.ndarray y,
-                np.ndarray sample_weight=None):
+                np.ndarray sample_weight=None, np.ndarray n_categories=None):
         """Build a decision tree from the training set (X, y)."""
 
         # check input
@@ -2697,6 +2702,14 @@ cdef class DepthFirstTreeBuilder(TreeBuilder):
         cdef DOUBLE_t* sample_weight_ptr = NULL
         if sample_weight is not None:
             sample_weight_ptr = <DOUBLE_t*> sample_weight.data
+
+        cdef INT32_t *n_categories_ptr = NULL
+        if n_categories is not None:
+            if ((n_categories.dtype != np.int32) or
+                    (not n_categories.flags.contiguous)):
+                n_categories = np.asarray(n_categories,
+                                          dtype=np.int32, order="C")
+            n_categories_ptr = <INT32_t *> n_categories.data
 
         # Initial capacity
         cdef int init_capacity
@@ -2716,7 +2729,7 @@ cdef class DepthFirstTreeBuilder(TreeBuilder):
         cdef SIZE_t min_samples_split = self.min_samples_split
 
         # Recursive partition (without actual recursion)
-        splitter.init(X, y, sample_weight_ptr)
+        splitter.init(X, y, sample_weight_ptr, n_categories_ptr)
 
         cdef SIZE_t start
         cdef SIZE_t end
@@ -2840,7 +2853,7 @@ cdef class BestFirstTreeBuilder(TreeBuilder):
         self.max_leaf_nodes = max_leaf_nodes
 
     cpdef build(self, Tree tree, object X, np.ndarray y,
-                np.ndarray sample_weight=None):
+                np.ndarray sample_weight=None, np.ndarray n_categories=None):
         """Build a decision tree from the training set (X, y)."""
 
         # check input
@@ -2850,6 +2863,14 @@ cdef class BestFirstTreeBuilder(TreeBuilder):
         if sample_weight is not None:
             sample_weight_ptr = <DOUBLE_t*> sample_weight.data
 
+        cdef INT32_t *n_categories_ptr = NULL
+        if n_categories is not None:
+            if ((n_categories.dtype != np.int32) or
+                    (not n_categories.flags.contiguous)):
+                n_categories = np.asarray(n_categories,
+                                          dtype=np.int32, order="C")
+            n_categories_ptr = <INT32_t *> n_categories.data
+
         # Parameters
         cdef Splitter splitter = self.splitter
         cdef SIZE_t max_leaf_nodes = self.max_leaf_nodes
@@ -2858,7 +2879,7 @@ cdef class BestFirstTreeBuilder(TreeBuilder):
         cdef SIZE_t min_samples_split = self.min_samples_split
 
         # Recursive partition (without actual recursion)
-        splitter.init(X, y, sample_weight_ptr)
+        splitter.init(X, y, sample_weight_ptr, n_categories_ptr)
 
         cdef PriorityHeap frontier = PriorityHeap(INITIAL_STACK_SIZE)
         cdef PriorityHeapRecord record
