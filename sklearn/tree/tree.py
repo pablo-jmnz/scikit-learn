@@ -18,13 +18,14 @@ from __future__ import division
 
 import numbers
 from abc import ABCMeta, abstractmethod
-from itertools import izip, count
+from itertools import count
 
 import numpy as np
 from scipy.sparse import issparse
 
 from ..base import BaseEstimator, ClassifierMixin, RegressorMixin
 from ..externals import six
+from six.moves import zip
 from ..feature_selection.from_model import _LearntSelectorMixin
 from ..utils import check_array, check_random_state, compute_sample_weight
 from ..utils.validation import NotFittedError
@@ -303,7 +304,7 @@ class BaseDecisionTree(six.with_metaclass(ABCMeta, BaseEstimator,
             X = np.copy(X)
         for feature in categorical:
             rounded = np.round(X[:, feature]).astype(np.int64)
-            self.category_map_[feature] = dict(izip(set(rounded), count()))
+            self.category_map_[feature] = dict(zip(set(rounded), count()))
             X[:, feature] = np.array([self.category_map_[feature][x]
                                       for x in rounded]).astype(DTYPE)
             n_categories[feature] = len(self.category_map_[feature])
@@ -399,7 +400,7 @@ class BaseDecisionTree(six.with_metaclass(ABCMeta, BaseEstimator,
         for feature in categorical_features:
             rounded = np.round(X[:, feature]).astype('int64')
             new_cat = set(rounded) - set(self.category_map_[feature])
-            new_cat_map = dict(izip(new_cat, count(n_categories[feature])))
+            new_cat_map = dict(zip(new_cat, count(n_categories[feature])))
             X[:, feature] = np.array(
                 [self.category_map_[feature].get(x, new_cat_map.get(x))
                  for x in rounded]).astype(DTYPE)
