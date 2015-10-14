@@ -332,14 +332,14 @@ class BaseDecisionTree(six.with_metaclass(ABCMeta, BaseEstimator,
         SPLITTERS = SPARSE_SPLITTERS if issparse(X) else DENSE_SPLITTERS
 
         splitter = self.splitter
-        if not isinstance(self.splitter, Splitter):
+        if not isinstance(splitter, Splitter):
             splitter = SPLITTERS[self.splitter](criterion,
                                                 self.max_features_,
                                                 self.min_samples_leaf,
                                                 min_weight_leaf,
                                                 random_state)
 
-        if (not isinstance(self.splitter, _tree.RandomSplitter) and
+        if (not isinstance(splitter, _tree.RandomSplitter) and
                 np.max(n_categories) > 64):
             raise ValueError('A feature with {} categories was detected; to'
                              ' use more than 64, use ExtraTree rather than'
