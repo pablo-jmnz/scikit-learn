@@ -1460,7 +1460,6 @@ cdef class RandomSplitter(BaseDenseSplitter):
         cdef DTYPE_t current_feature_value
         cdef SIZE_t partition_end
         cdef bint is_categorical
-        cdef UINT32_t split_n_draw
         cdef UINT64_t split_seed
 
         _init_split(&best, end)
@@ -1540,13 +1539,8 @@ cdef class RandomSplitter(BaseDenseSplitter):
                     # Construct a random split
                     is_categorical = self.n_categories[current.feature] > 0
                     if is_categorical:
-                        # split_n_draw is the number of categories to send left
-                        # TODO: this should be a binomial draw
-                        split_n_draw = rand_int(1, self.n_categories[current.feature],
-                                                random_state) & <SIZE_t>0x7FFFFFFF
                         split_seed = our_rand_r(random_state)
-                        current.split_value.cat_split = (
-                            (split_seed << 32) | (split_n_draw << 1) | 1)
+                        current.split_value.cat_split = (split_seed << 32) | 1
                     else:
                         current.split_value.threshold = rand_uniform(
                             min_feature_value, max_feature_value, random_state)
@@ -3676,7 +3670,7 @@ cdef inline void make_bit_cache(SplitValue split, INT32_t n_categories,
     """Regenerate and store the random numbers for a split."""
     cdef UINT32_t rng_seed
     cdef SIZE_t q
-    cdef UINT32_t val, idx, shift
+    cdef UINT32_t val
 
     if (n_categories <= 0):
         # Non-categorical feature; bit cache not used
@@ -3691,11 +3685,9 @@ cdef inline void make_bit_cache(SplitValue split, INT32_t n_categories,
         for q in range((n_categories + 7) // 8):
             bit_cache[q] = 0
         rng_seed = split.cat_split >> 32
-        for q in range((split.cat_split & <SIZE_t>0xFFFFFFFF) >> 1):
-            val = rand_int(0, n_categories, &rng_seed)
-            idx = val // 8
-            shift = val % 8
-            bit_cache[idx] |= (1 << shift)
+        for q in range(n_categories):
+            val = rand_int(0, 2, &rng_seed)
+            bit_cache[q // 8] |= val << (q % 8)
 
 cdef inline bint goes_left(DTYPE_t feature_value, SplitValue split,
                            INT32_t n_categories, UINT8_t* bit_cache) nogil:
