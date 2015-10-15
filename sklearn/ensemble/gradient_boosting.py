@@ -43,7 +43,8 @@ from ..utils.validation import check_is_fitted, NotFittedError
 from ..externals import six
 from ..feature_selection.from_model import _LearntSelectorMixin
 
-from ..tree.tree import DecisionTreeRegressor
+from ..tree.tree import (DecisionTreeRegressor, preproc_categorical,
+                         validate_categorical)
 from ..tree._tree import DTYPE, TREE_LEAF
 from ..tree._tree import PresortBestSplitter
 from ..tree._tree import FriedmanMSE
@@ -728,6 +729,7 @@ class BaseGradientBoosting(six.with_metaclass(ABCMeta, BaseEnsemble,
         self.verbose = verbose
         self.max_leaf_nodes = max_leaf_nodes
         self.warm_start = warm_start
+        self.category_map_ = None
 
         self.estimators_ = np.empty((0, 0), dtype=np.object)
 
@@ -958,6 +960,10 @@ class BaseGradientBoosting(six.with_metaclass(ABCMeta, BaseEnsemble,
 
         y = self._validate_y(y)
 
+        # Preprocess categorical variables
+        X, _, self.category_map_ = preproc_categorical(
+            X, categorical, check_input=True)
+
         random_state = check_random_state(self.random_state)
         self._check_params()
 
@@ -1110,6 +1116,8 @@ class BaseGradientBoosting(six.with_metaclass(ABCMeta, BaseEnsemble,
             [n_samples].
         """
         X = check_array(X, dtype=DTYPE, order="C")
+        X = validate_categorical(X, self.category_map_)
+
         score = self._decision_function(X)
         if score.shape[1] == 1:
             return score.ravel()
@@ -1135,6 +1143,8 @@ class BaseGradientBoosting(six.with_metaclass(ABCMeta, BaseEnsemble,
             ``k == 1``, otherwise ``k==n_classes``.
         """
         X = check_array(X, dtype=DTYPE, order="C")
+        X = validate_categorical(X, self.category_map_)
+
         score = self._init_decision_function(X)
         for i in range(self.estimators_.shape[0]):
             predict_stage(self.estimators_, i, X, self.learning_rate, score)
@@ -1377,6 +1387,8 @@ class GradientBoostingClassifier(BaseGradientBoosting, ClassifierMixin):
             [n_samples].
         """
         X = check_array(X, dtype=DTYPE, order="C")
+        X = validate_categorical(X, self.category_map_)
+
         score = self._decision_function(X)
         if score.shape[1] == 1:
             return score.ravel()
@@ -1693,6 +1705,8 @@ class GradientBoostingRegressor(BaseGradientBoosting, RegressorMixin):
             The predicted values.
         """
         X = check_array(X, dtype=DTYPE, order="C")
+        X = validate_categorical(X, self.category_map_)
+
         return self._decision_function(X).ravel()
 
     def staged_predict(self, X):
