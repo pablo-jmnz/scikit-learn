@@ -187,7 +187,7 @@ cdef class DepthFirstTreeBuilder(TreeBuilder):
         cdef SIZE_t min_samples_split = self.min_samples_split
 
         # Recursive partition (without actual recursion)
-        splitter.init(X, y, sample_weight_ptr, n_categories_ptr, X_idx_sorted)
+        splitter.init(X, y, sample_weight_ptr, n_categories_ptr, tree.twoclass, X_idx_sorted)
 
         cdef SIZE_t start
         cdef SIZE_t end
@@ -343,7 +343,7 @@ cdef class BestFirstTreeBuilder(TreeBuilder):
         cdef SIZE_t min_samples_split = self.min_samples_split
 
         # Recursive partition (without actual recursion)
-        splitter.init(X, y, sample_weight_ptr, n_categories_ptr, X_idx_sorted)
+        splitter.init(X, y, sample_weight_ptr, n_categories_ptr, tree.twoclass, X_idx_sorted)
 
         cdef PriorityHeap frontier = PriorityHeap(INITIAL_STACK_SIZE)
         cdef PriorityHeapRecord record
@@ -635,6 +635,8 @@ cdef class Tree:
         cdef SIZE_t k
         for k in range(n_outputs):
             self.n_classes[k] = n_classes[k]
+        
+        self.twoclass = (self.n_outputs == 1 & self.max_n_classes == 2)
 
         # Inner structures
         self.max_depth = 0

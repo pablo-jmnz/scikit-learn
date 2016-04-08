@@ -89,6 +89,8 @@ cdef class Splitter:
     cdef INT32_t* n_categories           # (n_features) array giving number of
                                          # categories (<0 for non-categorical)
     cdef UINT8_t* _bit_cache
+    
+    cdef public bint twoclass            # Binary classification
 
     # The samples vector `samples` is maintained by the Splitter object such
     # that the samples contained in a node are contiguous. With this setting,

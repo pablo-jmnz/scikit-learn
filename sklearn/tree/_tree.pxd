@@ -48,6 +48,7 @@ cdef class Tree:
     cdef SIZE_t* n_classes               # Number of classes in y[:, k]
     cdef public SIZE_t n_outputs         # Number of outputs in y
     cdef public SIZE_t max_n_classes     # max(n_classes)
+    cdef public bint twoclass            # Binary classification
 
     # Inner structures: values are stored separately from node structure,
     # since size is determined at runtime.

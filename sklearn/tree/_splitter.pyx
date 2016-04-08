@@ -128,6 +128,7 @@ cdef class Splitter:
                    np.ndarray[DOUBLE_t, ndim=2, mode="c"] y,
                    DOUBLE_t* sample_weight,
                    INT32_t* n_categories,
+                   bint twoclass,
                    np.ndarray X_idx_sorted=None) except *:
         """Initialize the splitter.
 
@@ -147,6 +148,8 @@ cdef class Splitter:
             are assumed to have uniform weight.
         """
 
+        self.twoclass = twoclass
+        
         self.rand_r_state = self.random_state.randint(0, RAND_R_MAX)
         cdef SIZE_t n_samples = X.shape[0]
 
@@ -283,11 +286,12 @@ cdef class BaseDenseSplitter(Splitter):
                    np.ndarray[DOUBLE_t, ndim=2, mode="c"] y,
                    DOUBLE_t* sample_weight,
                    INT32_t* n_categories,
+                   bint twoclass,
                    np.ndarray X_idx_sorted=None) except *:
         """Initialize the splitter."""
 
         # Call parent init
-        Splitter.init(self, X, y, sample_weight, n_categories)
+        Splitter.init(self, X, y, sample_weight, n_categories, twoclass)
 
         # Initialize X
         cdef np.ndarray X_ndarray = X
@@ -959,11 +963,12 @@ cdef class BaseSparseSplitter(Splitter):
                    np.ndarray[DOUBLE_t, ndim=2, mode="c"] y,
                    DOUBLE_t* sample_weight,
                    INT32_t* n_categories,
+                   bint twoclass,
                    np.ndarray X_idx_sorted=None) except *:
         """Initialize the splitter."""
 
         # Call parent init
-        Splitter.init(self, X, y, sample_weight, n_categories)
+        Splitter.init(self, X, y, sample_weight, n_categories, twoclass)
 
         if not isinstance(X, csc_matrix):
             raise ValueError("X should be in csc format")
