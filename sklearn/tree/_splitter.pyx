@@ -201,10 +201,10 @@ cdef class Splitter:
                                     else n_categories[i])
 
         # If needed, allocate cache space to hold split info
-        self.max_n_categories = max(
+        cdef UINT32_t max_n_categories = max(
             [self.n_categories[i] for i in range(n_features)])
-        if (self.max_n_categories > 0 and (~ self.twoclass)):
-            safe_realloc(&self._bit_cache, (self.max_n_categories + 7) // 8)
+        if max_n_categories > 0:
+            safe_realloc(&self._bit_cache, (max_n_categories + 7) // 8)
 
     cdef void node_reset(self, SIZE_t start, SIZE_t end,
                          double* weighted_n_node_samples) nogil:
@@ -374,10 +374,9 @@ cdef class BestSplitter(BaseDenseSplitter):
         cdef INT32_t ncat_present
         cdef INT32_t cat_offs[64]
         
-        cdef UINT8_t* cat_two = <UINT8_t*>malloc(self.max_n_categories * sizeof(UINT8_t))
-
-        for i in range(self.max_n_categories):
-            cat_two[i] = 0
+        cdef UINT32_t split_size
+        cdef UINT8_t* cat_two
+        cdef DTYPE_t* Yf
         
         cdef UINT32_t cat_index
 
@@ -469,13 +468,18 @@ cdef class BestSplitter(BaseDenseSplitter):
                     is_categorical = self.n_categories[current.feature] > 0
                     
                     if (is_categorical & self.twoclass):
+                        # I will build cat_two similar to the bit_cache implementation
+                        split_size = (self.n_categories[current.feature] + 7) // 8
+                        cat_two = <UINT8_t*>malloc(split_size * sizeof(UINT8_t))
+                        
                         for q in range(self.max_n_categories):
                             cat_two[q] = 0
                         
-                        breiman_proba(Xf, self.y, samples, start, end,
+                        Yf = <DTYPE_t*>malloc((end - start) * sizeof(DTYPE_t))
+                        breiman_proba(Xf, Yf, self.y, samples, start, end,
                                       self.y_stride, self.n_categories[current.feature])
                         
-                        sort(Xf + start, samples + start, end - start)
+                        sort(Yf + start, samples + start, end - start)
                         p = start
                         
                     elif is_categorical:
@@ -495,9 +499,13 @@ cdef class BestSplitter(BaseDenseSplitter):
                     while True:
                         if (is_categorical & self.twoclass):
                             while (p + 1 < end and
-                                   Xf[p + 1] <= Xf[p] + FEATURE_THRESHOLD):
+                                   Yf[p + 1] <= Yf[p] + FEATURE_THRESHOLD):
+                                       
                                 cat_index = <SIZE_t> X[X_sample_stride * samples[p] + feature_offset]
-                                cat_two[cat_index] = 1
+                                q = cat_index % 8
+                                if ((2**q) & cat_two[cat_index // 8]) == 0:
+                                    cat_two[cat_index // 8] += 2**q
+                                
                                 p += 1
 
                             # (p + 1 >= end) or (X[samples[p + 1], current.feature] >
@@ -580,6 +588,10 @@ cdef class BestSplitter(BaseDenseSplitter):
                                     current.split_value.threshold = Xf[p - 1]
 
                             best = current  # copy
+                    
+                    if (is_categorical & self.twoclass):
+                        free(cat_two)
+                        free(Yf)
 
         # Reorganize into samples[start:best.pos] + samples[best.pos:end]
         if best.pos < end:
@@ -625,8 +637,6 @@ cdef class BestSplitter(BaseDenseSplitter):
         # Return values
         split[0] = best
         n_constant_features[0] = n_total_constants
-        
-        free(cat_two)
 
 
 # Sort n-element arrays pointed to by Xf and samples, simultaneously,
@@ -738,7 +748,7 @@ cdef void heapsort(DTYPE_t* Xf, SIZE_t* samples, SIZE_t n) nogil:
         sift_down(Xf, samples, 0, end)
         end = end - 1
 
-cdef inline void breiman_proba(DTYPE_t* Xf, DOUBLE_t* y, SIZE_t* samples,
+cdef inline void breiman_proba(DTYPE_t* Xf, DTYPE_t* Yf, DOUBLE_t* y, SIZE_t* samples,
                                SIZE_t start, SIZE_t end, SIZE_t y_stride,
                                INT32_t n_categories) nogil:
     cdef SIZE_t i, j, p, val
@@ -762,8 +772,7 @@ cdef inline void breiman_proba(DTYPE_t* Xf, DOUBLE_t* y, SIZE_t* samples,
         freqs[j] = count1[j]/count[j] if count[j] != 0 else 0
     
     for p in range(start, end):
-        tmp = <INT32_t> Xf[p]
-        Xf[p] = count1[tmp]/count[tmp]
+        Yf[p] = <INT32_t> Xf[p]
     
     free(count)
     free(count1)

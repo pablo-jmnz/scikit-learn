@@ -92,7 +92,6 @@ cdef class Splitter:
     cdef UINT8_t* _bit_cache
     
     cdef bint twoclass                   # Binary classification
-    cdef INT32_t max_n_categories
 
     # The samples vector `samples` is maintained by the Splitter object such
     # that the samples contained in a node are contiguous. With this setting,
