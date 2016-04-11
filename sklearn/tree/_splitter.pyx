@@ -374,8 +374,8 @@ cdef class BestSplitter(BaseDenseSplitter):
         cdef INT32_t ncat_present
         cdef INT32_t cat_offs[64]
         
-        cdef UINT32_t split_size
-        cdef UINT8_t* cat_two
+        cdef UINT32_t split_len
+        cdef UINT64_t* cat_two
         cdef DTYPE_t* Yf
         
         cdef UINT32_t cat_index
@@ -469,10 +469,10 @@ cdef class BestSplitter(BaseDenseSplitter):
                     
                     if (is_categorical & self.twoclass):
                         # I will build cat_two similar to the bit_cache implementation
-                        split_size = (self.n_categories[current.feature] + 7) // 8
-                        cat_two = <UINT8_t*>malloc(split_size * sizeof(UINT8_t))
+                        split_len = (self.n_categories[current.feature] + 7) // 8
+                        cat_two = <UINT64_t*>malloc(split_len * sizeof(UINT64_t))
                         
-                        for q in range(self.max_n_categories):
+                        for q in range(split_len):
                             cat_two[q] = 0
                         
                         Yf = <DTYPE_t*>malloc((end - start) * sizeof(DTYPE_t))
@@ -502,9 +502,9 @@ cdef class BestSplitter(BaseDenseSplitter):
                                    Yf[p + 1] <= Yf[p] + FEATURE_THRESHOLD):
                                        
                                 cat_index = <SIZE_t> X[X_sample_stride * samples[p] + feature_offset]
-                                q = cat_index % 8
-                                if ((2**q) & cat_two[cat_index // 8]) == 0:
-                                    cat_two[cat_index // 8] += 2**q
+                                q = cat_index % 64
+                                if ((2**q) & cat_two[cat_index // 64]) == 0:
+                                    cat_two[cat_index // 64] += 2**q
                                 
                                 p += 1
 
@@ -596,7 +596,7 @@ cdef class BestSplitter(BaseDenseSplitter):
         # Reorganize into samples[start:best.pos] + samples[best.pos:end]
         if best.pos < end:
             make_bit_cache(best.split_value, self.n_categories[best.feature],
-                           self._bit_cache)
+                           self.twoclass, self._bit_cache)
             feature_offset = X_feature_stride * best.feature
             partition_end = end
             p = start
@@ -922,7 +922,7 @@ cdef class RandomSplitter(BaseDenseSplitter):
 
                         # Partition
                         make_bit_cache(current.split_value, self.n_categories[current.feature],
-                                       self._bit_cache)
+                                       0, self._bit_cache)
                         partition_end = end
                         p = start
                         while p < partition_end:
@@ -969,7 +969,7 @@ cdef class RandomSplitter(BaseDenseSplitter):
         feature_stride = X_feature_stride * best.feature
         if best.pos < end:
             make_bit_cache(best.split_value, self.n_categories[best.feature],
-                           self._bit_cache)
+                           0, self._bit_cache)
             if current.feature != best.feature:
                 partition_end = end
                 p = start
