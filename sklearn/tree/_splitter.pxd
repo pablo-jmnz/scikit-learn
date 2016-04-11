@@ -112,6 +112,7 @@ cdef class Splitter:
     cdef void init(self, object X, np.ndarray y,
                    DOUBLE_t* sample_weight,
                    INT32_t* n_categories,
+                   bint twoclass,
                    np.ndarray X_idx_sorted=*) except *
 
     cdef void node_reset(self, SIZE_t start, SIZE_t end,
