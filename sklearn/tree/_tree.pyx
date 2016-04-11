@@ -69,9 +69,9 @@ cdef DTYPE_t MIN_IMPURITY_SPLIT = 1e-7
 
 # Repeat struct definition for numpy
 SPLITVALUE_DTYPE = np.dtype({
-    'names': ['threshold', 'cat_split'],
-    'formats': [np.float64, np.uint64],
-    'offsets': [0, 0]
+    'names': ['threshold', 'cat_split', 'cat_two'],
+    'formats': [np.float64, np.uint64, np.uint8],
+    'offsets': [0, 0, 0]
 })
 NODE_DTYPE = np.dtype({
     'names': ['left_child', 'right_child', 'feature', 'split_value',

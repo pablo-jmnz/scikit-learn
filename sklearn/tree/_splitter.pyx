@@ -21,6 +21,7 @@ from libc.stdlib cimport free
 from libc.stdlib cimport qsort
 from libc.string cimport memcpy
 from libc.string cimport memset
+from libc.stdlib cimport malloc
 
 import numpy as np
 cimport numpy as np
@@ -200,10 +201,10 @@ cdef class Splitter:
                                     else n_categories[i])
 
         # If needed, allocate cache space to hold split info
-        cdef INT32_t max_n_categories = max(
+        self.max_n_categories = max(
             [self.n_categories[i] for i in range(n_features)])
-        if max_n_categories > 0:
-            safe_realloc(&self._bit_cache, (max_n_categories + 7) // 8)
+        if (self.max_n_categories > 0 and (~ self.twoclass)):
+            safe_realloc(&self._bit_cache, (self.max_n_categories + 7) // 8)
 
     cdef void node_reset(self, SIZE_t start, SIZE_t end,
                          double* weighted_n_node_samples) nogil:
@@ -372,6 +373,13 @@ cdef class BestSplitter(BaseDenseSplitter):
         cdef UINT64_t cat_split
         cdef INT32_t ncat_present
         cdef INT32_t cat_offs[64]
+        
+        cdef UINT8_t* cat_two = <UINT8_t*>malloc(self.max_n_categories * sizeof(UINT8_t))
+
+        for i in range(self.max_n_categories):
+            cat_two[i] = 0
+        
+        cdef UINT32_t cat_index
 
         _init_split(&best, end)
 
@@ -459,7 +467,18 @@ cdef class BestSplitter(BaseDenseSplitter):
                     # Evaluate all splits
                     self.criterion.reset()
                     is_categorical = self.n_categories[current.feature] > 0
-                    if is_categorical:
+                    
+                    if (is_categorical & self.twoclass):
+                        for q in range(self.max_n_categories):
+                            cat_two[q] = 0
+                        
+                        breiman_proba(Xf, self.y, samples, start, end,
+                                      self.y_stride, self.n_categories[current.feature])
+                        
+                        sort(Xf + start, samples + start, end - start)
+                        p = start
+                        
+                    elif is_categorical:
                         p = 0
                         # Identify the subset of categories present (for performance reasons)
                         cat_split = 0
@@ -474,7 +493,25 @@ cdef class BestSplitter(BaseDenseSplitter):
                         p = start
 
                     while True:
-                        if is_categorical:
+                        if (is_categorical & self.twoclass):
+                            while (p + 1 < end and
+                                   Xf[p + 1] <= Xf[p] + FEATURE_THRESHOLD):
+                                cat_index = <SIZE_t> X[X_sample_stride * samples[p] + feature_offset]
+                                cat_two[cat_index] = 1
+                                p += 1
+
+                            # (p + 1 >= end) or (X[samples[p + 1], current.feature] >
+                            #                    X[samples[p], current.feature])
+                            p += 1
+                            # (p >= end) or (X[samples[p], current.feature] >
+                            #                X[samples[p - 1], current.feature])
+
+                            if p >= end:
+                                break
+                            
+                            current.pos = p
+                            
+                        elif is_categorical:
                             # WARNING: This is O(n_samples *
                             # 2**n_categories), and will be very slow
                             # for more than just a few categories.
@@ -533,7 +570,9 @@ cdef class BestSplitter(BaseDenseSplitter):
 
                         if current_proxy_improvement > best_proxy_improvement:
                             best_proxy_improvement = current_proxy_improvement
-                            if is_categorical:
+                            if (is_categorical & self.twoclass):
+                                current.split_value.cat_two = cat_two
+                            elif is_categorical:
                                 current.split_value.cat_split = cat_split
                             else:
                                 current.split_value.threshold = (Xf[p - 1] + Xf[p]) / 2.0
@@ -586,6 +625,8 @@ cdef class BestSplitter(BaseDenseSplitter):
         # Return values
         split[0] = best
         n_constant_features[0] = n_total_constants
+        
+        free(cat_two)
 
 
 # Sort n-element arrays pointed to by Xf and samples, simultaneously,
@@ -697,6 +738,36 @@ cdef void heapsort(DTYPE_t* Xf, SIZE_t* samples, SIZE_t n) nogil:
         sift_down(Xf, samples, 0, end)
         end = end - 1
 
+cdef inline void breiman_proba(DTYPE_t* Xf, DOUBLE_t* y, SIZE_t* samples,
+                               SIZE_t start, SIZE_t end, SIZE_t y_stride,
+                               INT32_t n_categories) nogil:
+    cdef SIZE_t i, j, p, val
+    cdef INT32_t cat, tmp
+    cdef UINT32_t* count = <UINT32_t*>malloc(n_categories * sizeof(UINT32_t))
+    cdef UINT32_t* count1 = <UINT32_t*>malloc(n_categories * sizeof(UINT32_t))
+    cdef DOUBLE_t* freqs = <DOUBLE_t*>malloc(n_categories * sizeof(UINT32_t))
+    
+    for j in range(n_categories):
+        count[j] = 0
+        count1[j] = 0
+    
+    for p in range(start, end):
+        i = samples[p]
+        val = <SIZE_t> y[i * y_stride]
+        cat = <INT32_t> Xf[p]
+        count[cat] += 1
+        count1[cat] += val
+        
+    for j in range(n_categories):
+        freqs[j] = count1[j]/count[j] if count[j] != 0 else 0
+    
+    for p in range(start, end):
+        tmp = <INT32_t> Xf[p]
+        Xf[p] = count1[tmp]/count[tmp]
+    
+    free(count)
+    free(count1)
+    free(freqs)
 
 cdef class RandomSplitter(BaseDenseSplitter):
     """Splitter for finding the best random split."""

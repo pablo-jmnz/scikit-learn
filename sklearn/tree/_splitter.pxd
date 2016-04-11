@@ -41,6 +41,7 @@ ctypedef union SplitValue:
     # 2**31 category values, but can only be used for RandomSplitter.
     DOUBLE_t threshold
     UINT64_t cat_split
+    UINT8_t* cat_two
 
 cdef struct SplitRecord:
     # Data to track sample split
@@ -90,7 +91,8 @@ cdef class Splitter:
                                          # categories (<0 for non-categorical)
     cdef UINT8_t* _bit_cache
     
-    cdef public bint twoclass            # Binary classification
+    cdef bint twoclass                   # Binary classification
+    cdef INT32_t max_n_categories
 
     # The samples vector `samples` is maintained by the Splitter object such
     # that the samples contained in a node are contiguous. With this setting,
