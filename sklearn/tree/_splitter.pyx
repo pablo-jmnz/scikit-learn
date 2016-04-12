@@ -375,8 +375,8 @@ cdef class BestSplitter(BaseDenseSplitter):
         cdef INT32_t cat_offs[64]
         
         cdef UINT32_t split_len
-        cdef UINT64_t* cat_two
-        cdef DTYPE_t* Yf
+        cdef UINT64_t* cat_two = NULL
+        cdef DTYPE_t* Yf = NULL
         
         cdef UINT32_t cat_index
 
@@ -591,7 +591,9 @@ cdef class BestSplitter(BaseDenseSplitter):
                     
                     if (is_categorical & self.twoclass):
                         free(cat_two)
+                        cat_two = NULL
                         free(Yf)
+                        Yf = NULL
 
         # Reorganize into samples[start:best.pos] + samples[best.pos:end]
         if best.pos < end:
@@ -767,16 +769,12 @@ cdef inline void breiman_proba(DTYPE_t* Xf, DTYPE_t* Yf, DOUBLE_t* y, SIZE_t* sa
         cat = <INT32_t> Xf[p]
         count[cat] += 1
         count1[cat] += val
-        
-    for j in range(n_categories):
-        freqs[j] = count1[j]/count[j] if count[j] != 0 else 0
     
     for p in range(start, end):
-        Yf[p] = <INT32_t> Xf[p]
+        Yf[p] = count1[<INT32_t> Xf[p]]/count[<INT32_t> Xf[p]]
     
     free(count)
     free(count1)
-    free(freqs)
 
 cdef class RandomSplitter(BaseDenseSplitter):
     """Splitter for finding the best random split."""
