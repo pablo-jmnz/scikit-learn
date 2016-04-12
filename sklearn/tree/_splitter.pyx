@@ -469,7 +469,7 @@ cdef class BestSplitter(BaseDenseSplitter):
                     
                     if (is_categorical & self.twoclass):
                         # I will build cat_two similar to the bit_cache implementation
-                        split_len = (self.n_categories[current.feature] + 7) // 8
+                        split_len = (self.n_categories[current.feature] + 63) // 64
                         cat_two = <UINT64_t*>malloc(split_len * sizeof(UINT64_t))
                         
                         for q in range(split_len):
