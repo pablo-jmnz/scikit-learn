@@ -754,10 +754,9 @@ cdef inline void breiman_proba(DTYPE_t* Xf, DTYPE_t* Yf, DOUBLE_t* y, SIZE_t* sa
                                SIZE_t start, SIZE_t end, SIZE_t y_stride,
                                INT32_t n_categories) nogil:
     cdef SIZE_t i, j, p, val
-    cdef INT32_t cat, tmp
+    cdef INT32_t cat
     cdef UINT32_t* count = <UINT32_t*>malloc(n_categories * sizeof(UINT32_t))
     cdef UINT32_t* count1 = <UINT32_t*>malloc(n_categories * sizeof(UINT32_t))
-    cdef DOUBLE_t* freqs = <DOUBLE_t*>malloc(n_categories * sizeof(UINT32_t))
     
     for j in range(n_categories):
         count[j] = 0
@@ -771,7 +770,7 @@ cdef inline void breiman_proba(DTYPE_t* Xf, DTYPE_t* Yf, DOUBLE_t* y, SIZE_t* sa
         count1[cat] += val
     
     for p in range(start, end):
-        Yf[p] = count1[<INT32_t> Xf[p]]/count[<INT32_t> Xf[p]]
+        Yf[p] = <DTYPE_t> count1[<INT32_t> Xf[p]]/count[<INT32_t> Xf[p]]
     
     free(count)
     free(count1)
