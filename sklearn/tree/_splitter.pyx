@@ -374,11 +374,9 @@ cdef class BestSplitter(BaseDenseSplitter):
         cdef INT32_t ncat_present
         cdef INT32_t cat_offs[64]
         
-        cdef UINT32_t split_len
-        cdef UINT64_t* cat_two = NULL
-        cdef DTYPE_t* Yf = NULL
-        
-        cdef UINT32_t cat_index
+#        cdef UINT32_t split_len
+#        cdef UINT32_t cat_index
+#        cdef UINT64_t* cat_two = NULL
 
         _init_split(&best, end)
 
@@ -470,16 +468,15 @@ cdef class BestSplitter(BaseDenseSplitter):
                     if (is_categorical & self.twoclass):
                         # I will build cat_two similar to the bit_cache implementation
                         split_len = (self.n_categories[current.feature] + 63) // 64
-                        cat_two = <UINT64_t*>malloc(split_len * sizeof(UINT64_t))
+#                        cat_two = <UINT64_t*>malloc(split_len * sizeof(UINT64_t))
+#                        
+#                        for q in range(split_len):
+#                            cat_two[q] = 0
                         
-                        for q in range(split_len):
-                            cat_two[q] = 0
-                        
-                        Yf = <DTYPE_t*>malloc((end - start) * sizeof(DTYPE_t))
-                        breiman_proba(Xf, Yf, self.y, samples, start, end,
+                        breiman_proba(Xf, self.y, samples, start, end,
                                       self.y_stride, self.n_categories[current.feature])
                         
-                        sort(Yf + start, samples + start, end - start)
+                        sort(Xf + start, samples + start, end - start)
                         p = start
                         
                     elif is_categorical:
@@ -499,12 +496,15 @@ cdef class BestSplitter(BaseDenseSplitter):
                     while True:
                         if (is_categorical & self.twoclass):
                             while (p + 1 < end and
-                                   Yf[p + 1] <= Yf[p] + FEATURE_THRESHOLD):
+                                   Xf[p + 1] <= Xf[p] + FEATURE_THRESHOLD):
                                        
-                                cat_index = <SIZE_t> X[X_sample_stride * samples[p] + feature_offset]
-                                q = cat_index % 64
-                                if ((2**q) & cat_two[cat_index // 64]) == 0:
-                                    cat_two[cat_index // 64] += 2**q
+#                                cat_index = <SIZE_t> X[X_sample_stride * samples[p] + feature_offset]
+#                                q = cat_index % 8
+#                                if ((cat_two[cat_index // 64] >> q) & 1) == 0:
+#                                    cat_two[cat_index // 64] += (1 << q)
+                                q = <SIZE_t> X[X_sample_stride * samples[p] + feature_offset]
+                                if ((cat_split >> q) & 1 == 0):
+                                    cat_split += (1 << q)
                                 
                                 p += 1
 
@@ -579,7 +579,9 @@ cdef class BestSplitter(BaseDenseSplitter):
                         if current_proxy_improvement > best_proxy_improvement:
                             best_proxy_improvement = current_proxy_improvement
                             if (is_categorical & self.twoclass):
-                                current.split_value.cat_two = cat_two
+                                if (cat_split & 1):
+                                    cat_split = ~cat_split
+                                current.split_value.cat_split = cat_split
                             elif is_categorical:
                                 current.split_value.cat_split = cat_split
                             else:
@@ -589,11 +591,9 @@ cdef class BestSplitter(BaseDenseSplitter):
 
                             best = current  # copy
                     
-                    if (is_categorical & self.twoclass):
-                        free(cat_two)
-                        cat_two = NULL
-                        free(Yf)
-                        Yf = NULL
+#                    if (is_categorical & self.twoclass):
+#                        free(cat_two)
+#                        cat_two = NULL
 
         # Reorganize into samples[start:best.pos] + samples[best.pos:end]
         if best.pos < end:
@@ -750,11 +750,10 @@ cdef void heapsort(DTYPE_t* Xf, SIZE_t* samples, SIZE_t n) nogil:
         sift_down(Xf, samples, 0, end)
         end = end - 1
 
-cdef inline void breiman_proba(DTYPE_t* Xf, DTYPE_t* Yf, DOUBLE_t* y, SIZE_t* samples,
+cdef inline void breiman_proba(DTYPE_t* Xf, DOUBLE_t* y, SIZE_t* samples,
                                SIZE_t start, SIZE_t end, SIZE_t y_stride,
                                INT32_t n_categories) nogil:
-    cdef SIZE_t i, j, p, val
-    cdef INT32_t cat
+    cdef SIZE_t i, j, p, val, cat
     cdef UINT32_t* count = <UINT32_t*>malloc(n_categories * sizeof(UINT32_t))
     cdef UINT32_t* count1 = <UINT32_t*>malloc(n_categories * sizeof(UINT32_t))
     
@@ -765,12 +764,12 @@ cdef inline void breiman_proba(DTYPE_t* Xf, DTYPE_t* Yf, DOUBLE_t* y, SIZE_t* sa
     for p in range(start, end):
         i = samples[p]
         val = <SIZE_t> y[i * y_stride]
-        cat = <INT32_t> Xf[p]
+        cat = <SIZE_t> Xf[p]
         count[cat] += 1
         count1[cat] += val
     
     for p in range(start, end):
-        Yf[p] = <DTYPE_t> count1[<INT32_t> Xf[p]]/count[<INT32_t> Xf[p]]
+        Xf[p] = <DTYPE_t> count1[<SIZE_t> Xf[p]]/count[<SIZE_t> Xf[p]]
     
     free(count)
     free(count1)

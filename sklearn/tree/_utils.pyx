@@ -93,11 +93,11 @@ cdef inline void make_bit_cache(SplitValue split, INT32_t n_categories,
         # Non-categorical feature; bit cache not used
         return
     
-    if twoclass:
-        for q in range((n_categories + 7) // 8):
-            bit_cache[q] = (split.cat_two[q // 8] >> ((q % 8) * 8)) & <SIZE_t>0xFF
+#    if twoclass:
+#        for q in range((n_categories + 7) // 8):
+#            bit_cache[q] = (split.cat_two[q // 8] >> ((q % 8) * 8)) & <SIZE_t>0xFF
             
-    elif (split.cat_split & 1 == 0):
+    if (split.cat_split & 1 == 0):
         # Bitfield model
         for q in range((n_categories + 7) // 8):
             bit_cache[q] = (split.cat_split >> (q * 8)) & <SIZE_t>0xFF

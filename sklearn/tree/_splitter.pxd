@@ -41,7 +41,7 @@ ctypedef union SplitValue:
     # 2**31 category values, but can only be used for RandomSplitter.
     DOUBLE_t threshold
     UINT64_t cat_split
-    UINT64_t* cat_two
+#    UINT64_t* cat_two
 
 cdef struct SplitRecord:
     # Data to track sample split

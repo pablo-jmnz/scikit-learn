@@ -636,7 +636,7 @@ cdef class Tree:
         for k in range(n_outputs):
             self.n_classes[k] = n_classes[k]
         
-        self.twoclass = (self.n_outputs == 1 & self.max_n_classes == 2)
+        self.twoclass = (self.n_outputs == 1 and self.max_n_classes == 2)
 
         # Inner structures
         self.max_depth = 0
