@@ -373,10 +373,6 @@ cdef class BestSplitter(BaseDenseSplitter):
         cdef UINT64_t cat_split
         cdef INT32_t ncat_present
         cdef INT32_t cat_offs[64]
-        
-#        cdef UINT32_t split_len
-#        cdef UINT32_t cat_index
-#        cdef UINT64_t* cat_two = NULL
 
         _init_split(&best, end)
 
@@ -465,17 +461,9 @@ cdef class BestSplitter(BaseDenseSplitter):
                     self.criterion.reset()
                     is_categorical = self.n_categories[current.feature] > 0
                     
-                    if (is_categorical & self.twoclass):
-                        # I will build cat_two similar to the bit_cache implementation
-#                        split_len = (self.n_categories[current.feature] + 63) // 64
-#                        cat_two = <UINT64_t*>malloc(split_len * sizeof(UINT64_t))
-#                        
-#                        for q in range(split_len):
-#                            cat_two[q] = 0
-                        
+                    if (is_categorical and self.twoclass):
                         breiman_proba(Xf, self.y, samples, start, end,
                                       self.y_stride, self.n_categories[current.feature])
-                        
                         sort(Xf + start, samples + start, end - start)
                         p = start
                         
@@ -494,14 +482,10 @@ cdef class BestSplitter(BaseDenseSplitter):
                         p = start
 
                     while True:
-                        if (is_categorical & self.twoclass):
+                        if (is_categorical and self.twoclass):
                             while (p + 1 < end and
                                    Xf[p + 1] <= Xf[p] + FEATURE_THRESHOLD):
                                        
-#                                cat_index = <SIZE_t> X[X_sample_stride * samples[p] + feature_offset]
-#                                q = cat_index % 8
-#                                if ((cat_two[cat_index // 64] >> q) & 1) == 0:
-#                                    cat_two[cat_index // 64] += (1 << q)
                                 q = <SIZE_t> X[X_sample_stride * samples[p] + feature_offset]
                                 if ((cat_split >> q) & 1 == 0):
                                     cat_split += (1 << q)
@@ -578,7 +562,7 @@ cdef class BestSplitter(BaseDenseSplitter):
 
                         if current_proxy_improvement > best_proxy_improvement:
                             best_proxy_improvement = current_proxy_improvement
-                            if (is_categorical & self.twoclass):
+                            if (is_categorical and self.twoclass):
                                 if (cat_split & 1):
                                     cat_split = ~cat_split
                                 current.split_value.cat_split = cat_split
@@ -590,15 +574,11 @@ cdef class BestSplitter(BaseDenseSplitter):
                                     current.split_value.threshold = Xf[p - 1]
 
                             best = current  # copy
-                    
-#                    if (is_categorical & self.twoclass):
-#                        free(cat_two)
-#                        cat_two = NULL
 
         # Reorganize into samples[start:best.pos] + samples[best.pos:end]
         if best.pos < end:
             make_bit_cache(best.split_value, self.n_categories[best.feature],
-                           self.twoclass, self._bit_cache)
+                           self._bit_cache)
             feature_offset = X_feature_stride * best.feature
             partition_end = end
             p = start
@@ -753,20 +733,17 @@ cdef void heapsort(DTYPE_t* Xf, SIZE_t* samples, SIZE_t n) nogil:
 cdef inline void breiman_proba(DTYPE_t* Xf, DOUBLE_t* y, SIZE_t* samples,
                                SIZE_t start, SIZE_t end, SIZE_t y_stride,
                                INT32_t n_categories) nogil:
-    cdef SIZE_t i, j, p, val, cat
+    cdef SIZE_t p
     cdef UINT32_t* count = <UINT32_t*>malloc(n_categories * sizeof(UINT32_t))
     cdef UINT32_t* count1 = <UINT32_t*>malloc(n_categories * sizeof(UINT32_t))
     
-    for j in range(n_categories):
-        count[j] = 0
-        count1[j] = 0
+    for p in range(n_categories):
+        count[p] = 0
+        count1[p] = 0
     
     for p in range(start, end):
-        i = samples[p]
-        val = <SIZE_t> y[i * y_stride]
-        cat = <SIZE_t> Xf[p]
-        count[cat] += 1
-        count1[cat] += val
+        count[<SIZE_t> Xf[p]] += 1
+        count1[<SIZE_t> Xf[p]] += <SIZE_t> y[samples[p] * y_stride]
     
     for p in range(start, end):
         Xf[p] = <DTYPE_t> count1[<SIZE_t> Xf[p]]/count[<SIZE_t> Xf[p]]
@@ -918,7 +895,7 @@ cdef class RandomSplitter(BaseDenseSplitter):
 
                         # Partition
                         make_bit_cache(current.split_value, self.n_categories[current.feature],
-                                       0, self._bit_cache)
+                                       self._bit_cache)
                         partition_end = end
                         p = start
                         while p < partition_end:
@@ -965,7 +942,7 @@ cdef class RandomSplitter(BaseDenseSplitter):
         feature_stride = X_feature_stride * best.feature
         if best.pos < end:
             make_bit_cache(best.split_value, self.n_categories[best.feature],
-                           0, self._bit_cache)
+                           self._bit_cache)
             if current.feature != best.feature:
                 partition_end = end
                 p = start

@@ -83,7 +83,7 @@ cdef inline double log(double x) nogil:
     return ln(x) / ln(2.0)
 
 cdef inline void make_bit_cache(SplitValue split, INT32_t n_categories,
-                                bint twoclass, UINT8_t* bit_cache) nogil:
+                                UINT8_t* bit_cache) nogil:
     """Regenerate and store the random numbers for a split."""
     cdef UINT32_t rng_seed
     cdef SIZE_t q
@@ -92,10 +92,6 @@ cdef inline void make_bit_cache(SplitValue split, INT32_t n_categories,
     if (n_categories <= 0):
         # Non-categorical feature; bit cache not used
         return
-    
-#    if twoclass:
-#        for q in range((n_categories + 7) // 8):
-#            bit_cache[q] = (split.cat_two[q // 8] >> ((q % 8) * 8)) & <SIZE_t>0xFF
             
     if (split.cat_split & 1 == 0):
         # Bitfield model

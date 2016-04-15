@@ -810,7 +810,7 @@ cdef class Tree:
                 if n_categories > 0:
                     safe_realloc(&node._bit_cache, (n_categories + 7) // 8)
                     make_bit_cache(node.split_value, n_categories,
-                                   self.twoclass, node._bit_cache)
+                                   node._bit_cache)
             node += 1
 
     cdef void delete_bit_caches(self):
