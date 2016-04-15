@@ -462,6 +462,7 @@ cdef class BestSplitter(BaseDenseSplitter):
                     is_categorical = self.n_categories[current.feature] > 0
                     
                     if (is_categorical and self.twoclass):
+                        cat_split = 0
                         breiman_proba(Xf, self.y, samples, start, end,
                                       self.y_stride, self.n_categories[current.feature])
                         sort(Xf + start, samples + start, end - start)
