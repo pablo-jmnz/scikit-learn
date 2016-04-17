@@ -764,20 +764,17 @@ cdef void heapsort(DTYPE_t* Xf, SIZE_t* samples, SIZE_t n) nogil:
 cdef inline void breiman_proba(DTYPE_t* Xf, DOUBLE_t* y, SIZE_t* samples,
                                SIZE_t start, SIZE_t end, SIZE_t y_stride,
                                INT32_t n_categories) nogil:
-    cdef SIZE_t i, j, p, val, cat
+    cdef SIZE_t p
     cdef UINT32_t* count = <UINT32_t*>malloc(n_categories * sizeof(UINT32_t))
     cdef UINT32_t* count1 = <UINT32_t*>malloc(n_categories * sizeof(UINT32_t))
     
-    for j in range(n_categories):
-        count[j] = 0
-        count1[j] = 0
+    for p in range(n_categories):
+        count[p] = 0
+        count1[p] = 0
     
     for p in range(start, end):
-        i = samples[p]
-        val = <SIZE_t> y[i * y_stride]
-        cat = <SIZE_t> Xf[p]
-        count[cat] += 1
-        count1[cat] += val
+        count[<SIZE_t> Xf[p]] += 1
+        count1[<SIZE_t> Xf[p]] += <SIZE_t> y[samples[p] * y_stride]
     
     for p in range(start, end):
         Xf[p] = (<DTYPE_t> count1[<SIZE_t> Xf[p]])/(<DTYPE_t> count[<SIZE_t> Xf[p]])

@@ -480,12 +480,14 @@ class BaseDecisionTree(six.with_metaclass(ABCMeta, BaseEstimator,
                                                 min_weight_leaf,
                                                 random_state,
                                                 self.presort)
-
-#        if (not isinstance(splitter, _splitter.RandomSplitter) and
-#                np.max(n_categories) > 64):
-#            raise ValueError('A feature with {} categories was detected; to'
-#                             ' use more than 64, use ExtraTree rather than'
-#                             ' DecisionTree.'.format(np.max(n_categories)))
+        
+        twoclass = (self.n_outputs_ == 1 and np.max(self.n_classes_) == 2)
+        if (not isinstance(splitter, _splitter.RandomSplitter) and
+                np.max(n_categories) > 64) and (not twoclass):
+            raise ValueError('A feature with {} categories was detected; to'
+                             ' use more than 64 with multiple classification,' 
+                             ' use ExtraTree rather than'
+                             ' DecisionTree.'.format(np.max(n_categories)))
 
         self.tree_ = Tree(self.n_features_, self.n_classes_, self.n_outputs_)
         self.tree_.n_categories = n_categories
