@@ -373,6 +373,12 @@ cdef class BestSplitter(BaseDenseSplitter):
         cdef UINT64_t cat_split
         cdef INT32_t ncat_present
         cdef INT32_t cat_offs[64]
+        
+        cdef bint flag1 = 0
+        cdef bint flag2 = 0
+        cdef UINT32_t split_len
+        cdef UINT32_t cat_index
+        cdef UINT64_t* cat_two = NULL
 
         _init_split(&best, end)
 
@@ -462,15 +468,26 @@ cdef class BestSplitter(BaseDenseSplitter):
                     is_categorical = self.n_categories[current.feature] > 0
                     
                     if (is_categorical and self.twoclass):
-                        cat_split = 0
+                        # I will build cat_two similar to the bit_cache implementation                        
+                        split_len = (self.n_categories[current.feature] + 63) // 64
+                        cat_two = <UINT64_t*>malloc(split_len * sizeof(UINT64_t))
+                        
+                        current.split_value.cat_split.cat_type = 1
+                        flag1 = 1
+                        
+                        for q in range(split_len):
+                            cat_two[q] = 0
+                        
                         breiman_proba(Xf, self.y, samples, start, end,
                                       self.y_stride, self.n_categories[current.feature])
+                        
                         sort(Xf + start, samples + start, end - start)
                         p = start
                         
                     elif is_categorical:
                         p = 0
                         # Identify the subset of categories present (for performance reasons)
+                        current.split_value.cat_split.cat_type = 0
                         cat_split = 0
                         ncat_present = 0
                         for q in range(start, end):
@@ -487,9 +504,10 @@ cdef class BestSplitter(BaseDenseSplitter):
                             while (p + 1 < end and
                                    Xf[p + 1] <= Xf[p] + FEATURE_THRESHOLD):
                                        
-                                q = <SIZE_t> X[X_sample_stride * samples[p] + feature_offset]
-                                if ((cat_split >> q) & 1 == 0):
-                                    cat_split += (1 << q)
+                                cat_index = <SIZE_t> X[X_sample_stride * samples[p] + feature_offset]
+                                q = cat_index % 64
+                                if ((cat_two[cat_index // 64] >> q) & 1 == 0):
+                                    cat_two[cat_index // 64] += (1 << q)
                                 
                                 p += 1
 
@@ -564,17 +582,29 @@ cdef class BestSplitter(BaseDenseSplitter):
                         if current_proxy_improvement > best_proxy_improvement:
                             best_proxy_improvement = current_proxy_improvement
                             if (is_categorical and self.twoclass):
-                                if (cat_split & 1):
-                                    cat_split = ~cat_split
-                                current.split_value.cat_split = cat_split
+                                if flag1:
+                                    if flag2:
+                                        free(current.split_value.cat_split.cat_value.more)
+                                    current.split_value.cat_split.cat_value.more = <UINT64_t*>malloc(split_len * sizeof(UINT64_t))
+                                    flag2 = 1
+                                    flag1 = 0
+                                for q in range(split_len):
+                                    current.split_value.cat_split.cat_value.more[q] = cat_two[q]
                             elif is_categorical:
-                                current.split_value.cat_split = cat_split
+                                current.split_value.cat_split.cat_value.one = cat_split
                             else:
+                                if flag2:
+                                    free(current.split_value.cat_split.cat_value.more)
+                                    flag2 = 0
                                 current.split_value.threshold = (Xf[p - 1] + Xf[p]) / 2.0
                                 if current.split_value.threshold == Xf[p]:
                                     current.split_value.threshold = Xf[p - 1]
 
-                            best = current  # copy
+                            best = current  # copy                     
+                    
+                    if (is_categorical and self.twoclass):
+                        free(cat_two)
+                        cat_two = NULL
 
         # Reorganize into samples[start:best.pos] + samples[best.pos:end]
         if best.pos < end:
@@ -734,20 +764,23 @@ cdef void heapsort(DTYPE_t* Xf, SIZE_t* samples, SIZE_t n) nogil:
 cdef inline void breiman_proba(DTYPE_t* Xf, DOUBLE_t* y, SIZE_t* samples,
                                SIZE_t start, SIZE_t end, SIZE_t y_stride,
                                INT32_t n_categories) nogil:
-    cdef SIZE_t p
+    cdef SIZE_t i, j, p, val, cat
     cdef UINT32_t* count = <UINT32_t*>malloc(n_categories * sizeof(UINT32_t))
     cdef UINT32_t* count1 = <UINT32_t*>malloc(n_categories * sizeof(UINT32_t))
     
-    for p in range(n_categories):
-        count[p] = 0
-        count1[p] = 0
+    for j in range(n_categories):
+        count[j] = 0
+        count1[j] = 0
     
     for p in range(start, end):
-        count[<SIZE_t> Xf[p]] += 1
-        count1[<SIZE_t> Xf[p]] += <SIZE_t> y[samples[p] * y_stride]
+        i = samples[p]
+        val = <SIZE_t> y[i * y_stride]
+        cat = <SIZE_t> Xf[p]
+        count[cat] += 1
+        count1[cat] += val
     
     for p in range(start, end):
-        Xf[p] = <DTYPE_t> count1[<SIZE_t> Xf[p]]/count[<SIZE_t> Xf[p]]
+        Xf[p] = (<DTYPE_t> count1[<SIZE_t> Xf[p]])/(<DTYPE_t> count[<SIZE_t> Xf[p]])
     
     free(count)
     free(count1)
@@ -887,7 +920,8 @@ cdef class RandomSplitter(BaseDenseSplitter):
                         is_categorical = self.n_categories[current.feature] > 0
                         if is_categorical:
                             split_seed = our_rand_r(random_state)
-                            current.split_value.cat_split = (split_seed << 32) | 1
+                            current.split_value.cat_split.cat_type = 0
+                            current.split_value.cat_split.cat_value.one = (split_seed << 32) | 1
                         else:
                             current.split_value.threshold = rand_uniform(
                                 min_feature_value, max_feature_value, random_state)

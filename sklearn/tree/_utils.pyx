@@ -92,16 +92,20 @@ cdef inline void make_bit_cache(SplitValue split, INT32_t n_categories,
     if (n_categories <= 0):
         # Non-categorical feature; bit cache not used
         return
+    
+    if (split.cat_split.cat_type == 1):
+        for q in range((n_categories + 7) // 8):
+            bit_cache[q] = (split.cat_split.cat_value.more[q // 8] >> ((q % 8) * 8)) & <SIZE_t>0xFF
             
-    if (split.cat_split & 1 == 0):
+    elif (split.cat_split.cat_value.one & 1 == 0):
         # Bitfield model
         for q in range((n_categories + 7) // 8):
-            bit_cache[q] = (split.cat_split >> (q * 8)) & <SIZE_t>0xFF
+            bit_cache[q] = (split.cat_split.cat_value.one >> (q * 8)) & <SIZE_t>0xFF
     else:
         # Random model
         for q in range((n_categories + 7) // 8):
             bit_cache[q] = 0
-        rng_seed = split.cat_split >> 32
+        rng_seed = split.cat_split.cat_value.one >> 32
         for q in range(n_categories):
             val = rand_int(0, 2, &rng_seed)
             bit_cache[q // 8] |= val << (q % 8)

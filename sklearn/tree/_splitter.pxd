@@ -22,6 +22,17 @@ ctypedef np.npy_int32 INT32_t            # Signed 32 bit integer
 ctypedef np.npy_uint32 UINT32_t          # Unsigned 32 bit integer
 ctypedef np.npy_uint64 UINT64_t          # Unsigned 64 bit integer
 
+#ctypedef enum CatSplitType:
+#    bruteforce, sorting
+
+ctypedef union CatSplitValue:
+    UINT64_t one
+    UINT64_t* more
+
+ctypedef struct CatSplit:
+    UINT8_t cat_type                    # 0: bruteforce, 1: sort
+    CatSplitValue cat_value
+
 ctypedef union SplitValue:
     # Union type to generalize the concept of a threshold to
     # categorical features. For non-categorical features, use the
@@ -40,7 +51,7 @@ ctypedef union SplitValue:
     # flip gives 1; otherwise right. This second method allows up to
     # 2**31 category values, but can only be used for RandomSplitter.
     DOUBLE_t threshold
-    UINT64_t cat_split
+    CatSplit cat_split
 
 cdef struct SplitRecord:
     # Data to track sample split
