@@ -777,7 +777,7 @@ cdef inline void breiman_proba(DTYPE_t* Xf, DOUBLE_t* y, SIZE_t* samples,
         count1[<SIZE_t> Xf[p]] += <SIZE_t> y[samples[p] * y_stride]
     
     for p in range(start, end):
-        Xf[p] = (<DTYPE_t> count1[<SIZE_t> Xf[p]])/(<DTYPE_t> count[<SIZE_t> Xf[p]])
+        Xf[p] = <DTYPE_t> count1[<SIZE_t> Xf[p]]/count[<SIZE_t> Xf[p]]
     
     free(count)
     free(count1)
